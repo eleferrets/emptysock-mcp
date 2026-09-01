@@ -4,6 +4,7 @@ import { physicsToolDefs, physicsHandler } from './physics.js';
 import { sceneToolDefs, sceneHandler } from './scene.js';
 import { saveToolDefs, saveHandler } from './save.js';
 import { actorToolDefs, actorHandler } from './actor.js';
+import { gms2ToolDefs, gms2Handler } from './gms2.js';
 
 type ToolHandler = (toolName: string, args: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
 
@@ -27,6 +28,7 @@ function buildRegistry(): Map<string, RegistryEntry> {
   register(sceneToolDefs,   sceneHandler,   'scene');
   register(saveToolDefs,    saveHandler,    'save');
   register(actorToolDefs,   actorHandler,   'actor');
+  register(gms2ToolDefs,    gms2Handler,    'gms2');
 
   return map;
 }
@@ -41,6 +43,7 @@ export function listTools() {
     ...sceneToolDefs,
     ...saveToolDefs,
     ...actorToolDefs,
+    ...gms2ToolDefs,
   ];
 }
 
