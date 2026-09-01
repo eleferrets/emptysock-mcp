@@ -8,27 +8,20 @@ import { gms2ToolDefs, gms2Handler } from './gms2.js';
 
 type ToolHandler = (toolName: string, args: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
 
-type RegistryEntry = {
-  handler: ToolHandler;
-  domain: string;
-};
-
 /** Build the handler registry once at startup — O(1) dispatch per call. */
-function buildRegistry(): Map<string, RegistryEntry> {
-  const map = new Map<string, RegistryEntry>();
+function buildRegistry(): Map<string, ToolHandler> {
+  const map = new Map<string, ToolHandler>();
 
-  const register = (defs: ReadonlyArray<{ name: string }>, handler: ToolHandler, domain: string) => {
-    for (const def of defs) {
-      map.set(def.name, { handler, domain });
-    }
+  const register = (defs: ReadonlyArray<{ name: string }>, handler: ToolHandler) => {
+    for (const def of defs) map.set(def.name, handler);
   };
 
-  register(navmeshToolDefs, navmeshHandler, 'navmesh');
-  register(physicsToolDefs, physicsHandler, 'physics');
-  register(sceneToolDefs,   sceneHandler,   'scene');
-  register(saveToolDefs,    saveHandler,    'save');
-  register(actorToolDefs,   actorHandler,   'actor');
-  register(gms2ToolDefs,    gms2Handler,    'gms2');
+  register(navmeshToolDefs, navmeshHandler);
+  register(physicsToolDefs, physicsHandler);
+  register(sceneToolDefs,   sceneHandler);
+  register(saveToolDefs,    saveHandler);
+  register(actorToolDefs,   actorHandler);
+  register(gms2ToolDefs,    gms2Handler);
 
   return map;
 }
@@ -49,9 +42,9 @@ export function listTools() {
 
 /** Dispatch a tool call. Throws McpError(MethodNotFound) for unknown names. */
 export async function dispatchTool(name: string, args: unknown) {
-  const entry = registry.get(name);
-  if (!entry) {
+  const handler = registry.get(name);
+  if (!handler) {
     throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
   }
-  return entry.handler(name, args);
+  return handler(name, args);
 }

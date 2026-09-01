@@ -49,12 +49,10 @@ export class RateLimiter {
 
 /**
  * Default limiter: 60 calls per tool per 60-second window.
- * Override via RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS env vars.
+ * Override via RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS env vars (see env.ts).
  */
-export const defaultLimiter = new RateLimiter(
-  Number(process.env['RATE_LIMIT_MAX'] ?? 60),
-  Number(process.env['RATE_LIMIT_WINDOW_MS'] ?? 60_000),
-);
+import { env } from '../env.js';
+export const defaultLimiter = new RateLimiter(env.rateLimitMax, env.rateLimitWindowMs);
 
 // Prune stale buckets every 5 minutes.
 setInterval(() => defaultLimiter.gc(), 5 * 60 * 1000).unref();

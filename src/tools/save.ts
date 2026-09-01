@@ -91,10 +91,16 @@ export async function saveHandler(toolName: string, raw: unknown) {
       return textResponse({ slot, deleted: true });
     }
     case 'save_list': {
-      parse(ListSchema, raw);
-      const entries = await fs.readdir(env.saveBaseDir).catch(() => [] as string[]);
+      const { subdir } = parse(ListSchema, raw);
+      const dir = subdir ? path.resolve(env.saveBaseDir, subdir) : path.resolve(env.saveBaseDir);
+      // Containment check — SafeRelPath forbids traversal at schema level, but
+      // we assert here as defence-in-depth.
+      if (!dir.startsWith(path.resolve(env.saveBaseDir))) {
+        return textResponse({ error: 'Path is outside the allowed base directory' });
+      }
+      const entries = await fs.readdir(dir).catch(() => [] as string[]);
       const slots = entries.filter((e) => e.endsWith('.json')).map((e) => e.replace(/\.json$/, ''));
-      return textResponse({ slots });
+      return textResponse({ slots, dir });
     }
     default:
       throw new Error(`Unrouted save tool: ${toolName}`);
