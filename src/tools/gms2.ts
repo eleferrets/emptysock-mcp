@@ -3,6 +3,7 @@ import path from 'path';
 import { z } from 'zod';
 import { parse } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { env } from '../env.js';
 
 const Gms2InspectSchema = z.object({
   yypPath: z
@@ -74,9 +75,17 @@ export async function gms2Handler(toolName: string, raw: unknown) {
     case 'gms2_inspect_project': {
       const { yypPath } = parse(Gms2InspectSchema, raw);
 
+      // Resolve and enforce containment within saveBaseDir so callers cannot
+      // read arbitrary files by supplying an absolute path like /etc/passwd.
+      const resolved = path.resolve(env.saveBaseDir, yypPath);
+      if (!resolved.startsWith(path.resolve(env.saveBaseDir) + path.sep) &&
+          resolved !== path.resolve(env.saveBaseDir)) {
+        return textResponse({ error: 'Path is outside the allowed base directory' });
+      }
+
       let fileContent: string;
       try {
-        fileContent = fs.readFileSync(path.resolve(yypPath), 'utf8');
+        fileContent = fs.readFileSync(resolved, 'utf8');
       } catch (err) {
         return textResponse({ error: `Could not read file: ${(err as NodeJS.ErrnoException).message}` });
       }
