@@ -15,7 +15,26 @@ const ComponentQuerySchema = z.object({
   componentType: z.string().min(1).max(128).regex(/^[A-Za-z][\w]*$/, 'Component type must be a valid class name'),
 });
 
+const CreateEntitySchema = z.object({
+  sceneId: SafeId,
+  tag: SafeId.optional(),
+  components: z.array(SafeId).optional(),
+});
+
 export const sceneToolDefs = [
+  {
+    name: 'scene_create_entity',
+    description: 'Add a new entity to a scene. Returns the new entity\'s ID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sceneId:    { type: 'string' },
+        tag:        { type: 'string' },
+        components: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['sceneId'],
+    },
+  },
   {
     name: 'scene_list_entities',
     description: 'List all entity IDs currently active in a scene.',
@@ -65,6 +84,11 @@ export async function sceneHandler(toolName: string, raw: unknown) {
     case 'scene_get_component': {
       const { sceneId, entityId, componentType } = parse(ComponentQuerySchema, raw);
       return textResponse({ sceneId, entityId, componentType, data: null });
+    }
+    case 'scene_create_entity': {
+      const { sceneId, tag, components } = parse(CreateEntitySchema, raw);
+      const entityId = `entity-${Date.now()}`;
+      return textResponse({ sceneId, entityId, tag: tag ?? null, components: components ?? [] });
     }
     default:
       throw new Error(`Unrouted scene tool: ${toolName}`);

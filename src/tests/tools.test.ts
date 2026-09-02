@@ -72,4 +72,46 @@ describe('dispatchTool', () => {
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { slots: string[] };
     expect(Array.isArray(parsed.slots)).toBe(true);
   });
+
+  it('gms2_inspect_project rejects a path with traversal', async () => {
+    await expect(
+      dispatchTool('gms2_inspect_project', { yypPath: '../../etc/passwd.yyp' }),
+    ).rejects.toThrow(McpError);
+  });
+
+  it('emptysock_layer_info returns an object with methods', async () => {
+    const res = await dispatchTool('emptysock_layer_info', {});
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { methods: unknown };
+    expect(parsed.methods).toBeDefined();
+  });
+
+  it('particle_emitter_config (get) returns a config with maxParticles', async () => {
+    const res = await dispatchTool('particle_emitter_config', { emitterId: 'dust' });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { config: { maxParticles: number } };
+    expect(typeof parsed.config.maxParticles).toBe('number');
+  });
+
+  it('particle_emitter_config (set) returns updated: true', async () => {
+    const res = await dispatchTool('particle_emitter_config', {
+      emitterId: 'dust',
+      config: { maxParticles: 200 },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { updated: boolean; config: { maxParticles: number } };
+    expect(parsed.updated).toBe(true);
+    expect(parsed.config.maxParticles).toBe(200);
+  });
+
+  it('story_graph_export returns nodes and edges arrays', async () => {
+    const res = await dispatchTool('story_graph_export', { sceneId: 'chapter1' });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { nodes: unknown[]; edges: unknown[] };
+    expect(Array.isArray(parsed.nodes)).toBe(true);
+    expect(Array.isArray(parsed.edges)).toBe(true);
+  });
+
+  it('scene_create_entity returns an entityId string', async () => {
+    const res = await dispatchTool('scene_create_entity', { sceneId: 'level1', tag: 'enemy' });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { entityId: string };
+    expect(typeof parsed.entityId).toBe('string');
+    expect(parsed.entityId.length).toBeGreaterThan(0);
+  });
 });

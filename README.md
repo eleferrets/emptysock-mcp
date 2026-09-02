@@ -1,6 +1,6 @@
 # emptysock-mcp
 
-Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. Exposes engine systems — NavMesh, Physics, Scene, Save, and Actor — as MCP tools consumable by Claude Desktop, AI agents, and the Claude API.
+Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. Exposes engine systems — NavMesh, Physics, Scene, Save, Actor, Particles, and Story Graph — as MCP tools consumable by Claude Desktop, AI agents, and the Claude API.
 
 ---
 
@@ -121,6 +121,7 @@ Restart Claude Desktop. The EmptySock tools will appear in the tool picker.
 | `scene_list_entities` | All entity IDs active in a scene. |
 | `scene_entity_info` | Tag, active state, and component list for a specific entity. |
 | `scene_get_component` | Serialised state of a specific component on an entity. |
+| `scene_create_entity` | Add a new entity to a scene. Returns the new entity's ID. |
 
 **Example — get component:**
 ```json
@@ -173,6 +174,49 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 ```
 
 > **Ordering note:** ActorSystem drains every actor's inbox before calling `update()`. Messages sent during frame N are fully processed before frame N's update logic runs.
+
+---
+
+### GMS2
+
+| Tool | Description |
+|---|---|
+| `gms2_inspect_project` | Read a GameMaker Studio 2 `.yyp` project file and return a JSON summary: project name, asset counts, and lists of object and script names. Read-only. |
+| `emptysock_layer_info` | Reference information about the EmptySock LayerSystem API — available methods and usage examples. |
+
+---
+
+### Particles
+
+| Tool | Description |
+|---|---|
+| `particle_emitter_config` | Get or set a ParticleSystem emitter configuration by emitter ID. Omit `config` to read; provide `config` to write. |
+
+**Example — read config:**
+```json
+{ "emitterId": "dust" }
+```
+
+**Example — write config:**
+```json
+{
+  "emitterId": "dust",
+  "config": { "maxParticles": 200, "emitRate": 60, "colorStart": "#ffcc00" }
+}
+```
+
+---
+
+### Story Graph
+
+| Tool | Description |
+|---|---|
+| `story_graph_export` | Export the Story Graph (VNSystem) for a named scene as a JSON object containing nodes and edges. |
+
+**Example:**
+```json
+{ "sceneId": "chapter1", "graphId": "intro" }
+```
 
 ---
 
