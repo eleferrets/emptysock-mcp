@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const ActorRefSchema = z.object({
   actorId: SafeId,
@@ -82,6 +83,6 @@ export async function actorHandler(toolName: string, raw: unknown) {
       return textResponse({ actorId, inboxSize: 0 });
     }
     default:
-      throw new Error(`Unrouted actor tool: ${toolName}`);
+      throw notFound(toolName);
   }
 }

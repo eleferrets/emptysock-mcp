@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const SceneIdSchema = z.object({ sceneId: SafeId });
 
@@ -91,6 +92,6 @@ export async function sceneHandler(toolName: string, raw: unknown) {
       return textResponse({ sceneId, entityId, tag: tag ?? null, components: components ?? [] });
     }
     default:
-      throw new Error(`Unrouted scene tool: ${toolName}`);
+      throw notFound(toolName);
   }
 }

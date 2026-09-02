@@ -1,17 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
-import { parse } from '../lib/validate.js';
+import { parse, SafeRelPath } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 import { env } from '../env.js';
 
 const Gms2InspectSchema = z.object({
-  yypPath: z
-    .string()
-    .min(1)
-    .max(512)
-    .refine((p) => p.endsWith('.yyp'), { message: 'Path must point to a .yyp file' })
-    .refine((p) => !p.includes('..'), { message: 'Path traversal is not allowed' }),
+  yypPath: SafeRelPath.refine((p) => p.endsWith('.yyp'), {
+    message: 'Path must point to a .yyp file',
+  }),
 });
 
 /**
@@ -167,6 +165,6 @@ layers.destroy();
     }
 
     default:
-      throw new Error(`Unrouted gms2 tool: ${toolName}`);
+      throw notFound(toolName);
   }
 }
