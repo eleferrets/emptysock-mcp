@@ -1,7 +1,10 @@
 {
   "name": "emptysock-mcp",
   "version": "0.1.0",
+  "private": true,
   "description": "MCP server for the EmptySock game engine",
+  "keywords": ["emptysock", "mcp", "game-engine", "model-context-protocol"],
+  "repository": { "type": "git", "url": "https://github.com/eleferrets/emptysock-mcp" },
   "type": "module",
   "bin": { "emptysock-mcp": "./dist/server.js" },
   "files": ["dist"],
@@ -17,7 +20,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "typescript": "~6.0.3",
     "tsx": "^4.7.0",
     "vitest": "^5.0.0",
     "@types/node": "^22.0.0"
