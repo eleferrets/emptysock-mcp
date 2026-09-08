@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { parse, SafeRelPath } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { invalidParams, notFound } from '../lib/errors.js';
 import { env } from '../env.js';
 
 const SlotSchema = z.object({
@@ -23,7 +24,7 @@ function slotPath(slot: string): string {
   // but we also resolve and assert containment as defence-in-depth.
   const resolved = path.resolve(env.saveBaseDir, `${slot}.json`);
   if (!resolved.startsWith(path.resolve(env.saveBaseDir))) {
-    throw new Error('Path traversal detected');
+    invalidParams('path traversal detected');
   }
   return resolved;
 }
@@ -69,26 +70,38 @@ export const saveToolDefs = [
   },
 ] as const;
 
-export async function saveHandler(toolName: string, raw: unknown) {
+export async function saveHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'save_read': {
       const { slot } = parse(SlotSchema, raw);
       const file = slotPath(slot);
-      const text = await fs.readFile(file, 'utf8');
-      return textResponse({ slot, data: JSON.parse(text) as unknown });
+      try {
+        const text = await fs.readFile(file, 'utf8');
+        return textResponse({ slot, data: JSON.parse(text) as unknown });
+      } catch (err) {
+        return textResponse({ error: `Could not read slot "${slot}": ${(err as NodeJS.ErrnoException).message}` });
+      }
     }
     case 'save_write': {
       const { slot, data } = parse(WriteSchema, raw);
       const file = slotPath(slot);
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
-      return textResponse({ slot, written: true });
+      try {
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+        return textResponse({ slot, written: true });
+      } catch (err) {
+        return textResponse({ error: `Could not write slot "${slot}": ${(err as NodeJS.ErrnoException).message}` });
+      }
     }
     case 'save_delete': {
       const { slot } = parse(SlotSchema, raw);
       const file = slotPath(slot);
-      await fs.rm(file, { force: true });
-      return textResponse({ slot, deleted: true });
+      try {
+        await fs.rm(file, { force: true });
+        return textResponse({ slot, deleted: true });
+      } catch (err) {
+        return textResponse({ error: `Could not delete slot "${slot}": ${(err as NodeJS.ErrnoException).message}` });
+      }
     }
     case 'save_list': {
       const { subdir } = parse(ListSchema, raw);
@@ -103,6 +116,6 @@ export async function saveHandler(toolName: string, raw: unknown) {
       return textResponse({ slots, dir });
     }
     default:
-      throw new Error(`Unrouted save tool: ${toolName}`);
+      notFound(toolName);
   }
 }

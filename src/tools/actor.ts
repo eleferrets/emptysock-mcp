@@ -68,7 +68,7 @@ export const actorToolDefs = [
   },
 ] as const;
 
-export async function actorHandler(toolName: string, raw: unknown) {
+export async function actorHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'actor_send_message': {
       const { actorId, message } = parse(SendMessageSchema, raw);

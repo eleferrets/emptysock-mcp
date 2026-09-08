@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId, Vec2 } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const FindPathSchema = z.object({
   from: Vec2,
@@ -42,7 +43,7 @@ export const navmeshToolDefs = [
   },
 ] as const;
 
-export async function navmeshHandler(toolName: string, raw: unknown) {
+export async function navmeshHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'navmesh_find_path': {
       const { from, to, mapId } = parse(FindPathSchema, raw);
@@ -60,6 +61,6 @@ export async function navmeshHandler(toolName: string, raw: unknown) {
       return textResponse({ mapId, nearestNode: point });
     }
     default:
-      throw new Error(`Unrouted navmesh tool: ${toolName}`);
+      notFound(toolName);
   }
 }

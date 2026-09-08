@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const DEFAULT_CONFIG = {
   maxParticles: 100,
@@ -72,6 +73,6 @@ export async function particleHandler(toolName: string, raw: unknown): Promise<{
       return textResponse({ emitterId, updated: true, config: merged });
     }
     default:
-      throw new Error(`Unrouted particle tool: ${toolName}`);
+      notFound(toolName);
   }
 }

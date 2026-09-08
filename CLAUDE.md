@@ -21,9 +21,11 @@ src/
     actor.ts         actor_send_message, actor_broadcast, actor_inbox_size
     gms2.ts          gms2_inspect_project, emptysock_layer_info
     navmesh.ts       navmesh_find_path, navmesh_nearest_node
+    particle.ts      particle_emitter_config
     physics.ts       physics_raycast_2d, physics_raycast_3d, physics_overlap_circle, physics_body_state
     save.ts          save_read, save_write, save_delete, save_list
     scene.ts         scene_list_entities, scene_entity_info, scene_get_component
+    vn.ts            story_graph_export
 ```
 
 ---

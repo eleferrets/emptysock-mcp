@@ -72,7 +72,7 @@ export const sceneToolDefs = [
   },
 ] as const;
 
-export async function sceneHandler(toolName: string, raw: unknown) {
+export async function sceneHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'scene_list_entities': {
       const { sceneId } = parse(SceneIdSchema, raw);
