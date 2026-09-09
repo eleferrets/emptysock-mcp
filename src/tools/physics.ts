@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId, Vec2, Vec3, GameNum } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const Raycast2DSchema = z.object({
   origin: Vec2,
@@ -81,7 +82,7 @@ export const physicsToolDefs = [
   },
 ] as const;
 
-export async function physicsHandler(toolName: string, raw: unknown) {
+export async function physicsHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'physics_raycast_2d': {
       const args = parse(Raycast2DSchema, raw);
@@ -100,6 +101,6 @@ export async function physicsHandler(toolName: string, raw: unknown) {
       return textResponse({ entityId, position: null, velocity: null, angularVelocity: null });
     }
     default:
-      throw new Error(`Unrouted physics tool: ${toolName}`);
+      notFound(toolName);
   }
 }

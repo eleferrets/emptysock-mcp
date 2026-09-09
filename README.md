@@ -32,9 +32,9 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |---|---|---|
-| `EMPTYSOCK_API_TOKEN` | No | Bearer token for authenticated engine API calls |
-| `MCP_AUTH_TOKEN` | No | Required bearer token on SSE transport requests. Leave blank to disable auth. |
 | `SAVE_BASE_DIR` | No | Absolute path the save tools may read/write. Defaults to the process working directory. Set explicitly in production. |
+| `RATE_LIMIT_MAX` | No | Maximum tool calls per tool name per rate-limit window. Default: `60`. |
+| `RATE_LIMIT_WINDOW_MS` | No | Rate-limit sliding window duration in milliseconds. Default: `60000` (1 minute). |
 
 > **Never commit `.env`** — it is gitignored. Store secrets in your CI/CD secret manager, not in the repository.
 

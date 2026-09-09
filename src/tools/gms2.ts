@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 import { parse, SafeRelPath } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
@@ -68,7 +68,7 @@ export const gms2ToolDefs = [
   },
 ] as const;
 
-export async function gms2Handler(toolName: string, raw: unknown) {
+export async function gms2Handler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'gms2_inspect_project': {
       const { yypPath } = parse(Gms2InspectSchema, raw);
@@ -83,7 +83,7 @@ export async function gms2Handler(toolName: string, raw: unknown) {
 
       let fileContent: string;
       try {
-        fileContent = fs.readFileSync(resolved, 'utf8');
+        fileContent = await fs.readFile(resolved, 'utf8');
       } catch (err) {
         return textResponse({ error: `Could not read file: ${(err as NodeJS.ErrnoException).message}` });
       }

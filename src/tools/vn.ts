@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
+import { notFound } from '../lib/errors.js';
 
 const StoryGraphExportSchema = z.object({
   sceneId: SafeId,
@@ -30,6 +31,6 @@ export async function vnHandler(toolName: string, raw: unknown): Promise<{ conte
       return textResponse({ sceneId, graphId: graphId ?? 'default', nodes: [], edges: [] });
     }
     default:
-      throw new Error(`Unrouted vn tool: ${toolName}`);
+      notFound(toolName);
   }
 }
