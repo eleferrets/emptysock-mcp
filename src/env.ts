@@ -10,6 +10,13 @@ export const env = {
    */
   saveBaseDir: process.env['SAVE_BASE_DIR'] ?? process.cwd(),
 
+  /**
+   * Absolute path where project asset files (story graphs, etc.) live.
+   * Defaults to cwd. Override in production to the directory that holds
+   * the game project's assets folder.
+   */
+  assetBaseDir: process.env['ASSET_BASE_DIR'] ?? process.cwd(),
+
   /** Maximum tool calls allowed per key per rate-limit window. Default 60. */
   rateLimitMax: Number(process.env['RATE_LIMIT_MAX'] ?? 60),
 

@@ -33,6 +33,7 @@ cp .env.example .env
 | Variable | Required | Description |
 |---|---|---|
 | `SAVE_BASE_DIR` | No | Absolute path the save tools may read/write. Defaults to the process working directory. Set explicitly in production. |
+| `ASSET_BASE_DIR` | No | Absolute path where project asset files live. `story_graph_export` reads `.storyGraph.json` files from `{ASSET_BASE_DIR}/{sceneId}/{graphId}.storyGraph.json`. Defaults to the process working directory. |
 | `RATE_LIMIT_MAX` | No | Maximum tool calls per tool name per rate-limit window. Default: `60`. |
 | `RATE_LIMIT_WINDOW_MS` | No | Rate-limit sliding window duration in milliseconds. Default: `60000` (1 minute). |
 
@@ -211,7 +212,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `story_graph_export` | Returns a stub `{ nodes: [], edges: [] }` for the named scene and graph. VNSystem has no serialize method; this is a placeholder for a future export pipeline. |
+| `story_graph_export` | Reads `{assetBaseDir}/{sceneId}/{graphId}.storyGraph.json` from disk and returns the parsed Story Graph with nodes, edges, and startNodeId. Returns an error object if the file does not exist. |
 
 **Example:**
 ```json

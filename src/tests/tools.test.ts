@@ -7,10 +7,15 @@ import { env } from '../env.js';
 
 // Track temp files written during tests so we can clean them up
 const tempFiles: string[] = [];
+// Track temp directories written during tests so we can clean them up recursively
+const tempDirs: string[] = [];
 
 afterEach(async () => {
   for (const f of tempFiles.splice(0)) {
     await fsPromises.rm(f, { force: true });
+  }
+  for (const d of tempDirs.splice(0)) {
+    await fsPromises.rm(d, { recursive: true, force: true });
   }
 });
 
@@ -314,10 +319,53 @@ describe('dispatchTool', () => {
 
   // --- Story Graph ---
 
-  it('story_graph_export returns nodes and edges arrays', async () => {
-    const res = await dispatchTool('story_graph_export', { sceneId: 'chapter1' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { nodes: unknown[]; edges: unknown[] };
+  it('story_graph_export reads a real .storyGraph.json and returns nodes and edges', async () => {
+    const sceneId = 'vitest-sg-scene';
+    const sceneDir = path.join(env.assetBaseDir, sceneId);
+    const filePath = path.join(sceneDir, 'default.storyGraph.json');
+    tempDirs.push(sceneDir);
+
+    const graph = {
+      startNodeId: 'node-1',
+      nodes: [
+        { id: 'node-1', type: 'dialogue', x: 0, y: 0, speaker: 'Hero', text: 'Hello.' },
+        { id: 'node-2', type: 'choice', x: 100, y: 0, text: 'Pick one:', options: ['Yes', 'No'] },
+      ],
+      edges: [{ id: 'edge-1', from: 'node-1', fromPort: 0, to: 'node-2' }],
+    };
+
+    await fsPromises.mkdir(sceneDir, { recursive: true });
+    await fsPromises.writeFile(filePath, JSON.stringify(graph), 'utf8');
+
+    const res = await dispatchTool('story_graph_export', { sceneId });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      nodes: unknown[];
+      edges: unknown[];
+      startNodeId: string;
+    };
     expect(Array.isArray(parsed.nodes)).toBe(true);
+    expect(parsed.nodes).toHaveLength(2);
     expect(Array.isArray(parsed.edges)).toBe(true);
+    expect(parsed.edges).toHaveLength(1);
+    expect(parsed.startNodeId).toBe('node-1');
+  });
+
+  it('story_graph_export returns error object for a non-existent scene', async () => {
+    const res = await dispatchTool('story_graph_export', { sceneId: 'nonexistent-scene-xyz' });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      error: string;
+      sceneId: string;
+      graphId: string;
+    };
+    expect(typeof parsed.error).toBe('string');
+    expect(parsed.error).toBe('story graph not found');
+    expect(parsed.sceneId).toBe('nonexistent-scene-xyz');
+    expect(parsed.graphId).toBe('default');
+  });
+
+  it('story_graph_export rejects a sceneId with path traversal characters', async () => {
+    await expect(
+      dispatchTool('story_graph_export', { sceneId: '../evil' }),
+    ).rejects.toThrow(McpError);
   });
 });
