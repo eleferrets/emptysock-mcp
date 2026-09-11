@@ -211,7 +211,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `story_graph_export` | Export the Story Graph (VNSystem) for a named scene as a JSON object containing nodes and edges. |
+| `story_graph_export` | Returns a stub `{ nodes: [], edges: [] }` for the named scene and graph. VNSystem has no serialize method; this is a placeholder for a future export pipeline. |
 
 **Example:**
 ```json
