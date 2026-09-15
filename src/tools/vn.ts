@@ -97,6 +97,6 @@ export async function vnHandler(
       }
     }
     default:
-      notFound(toolName);
+      throw notFound(toolName);
   }
 }

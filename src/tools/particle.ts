@@ -73,6 +73,6 @@ export async function particleHandler(toolName: string, raw: unknown): Promise<{
       return textResponse({ emitterId, updated: true, config: merged });
     }
     default:
-      notFound(toolName);
+      throw notFound(toolName);
   }
 }

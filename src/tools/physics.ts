@@ -101,6 +101,6 @@ export async function physicsHandler(toolName: string, raw: unknown): Promise<{ 
       return textResponse({ entityId, position: null, velocity: null, angularVelocity: null });
     }
     default:
-      notFound(toolName);
+      throw notFound(toolName);
   }
 }
