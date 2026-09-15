@@ -24,7 +24,7 @@ src/
     particle.ts      particle_emitter_config
     physics.ts       physics_raycast_2d, physics_raycast_3d, physics_overlap_circle, physics_body_state
     save.ts          save_read, save_write, save_delete, save_list
-    scene.ts         scene_list_entities, scene_entity_info, scene_get_component
+    scene.ts         scene_list_entities, scene_entity_info, scene_get_component, scene_create_entity
     vn.ts            story_graph_export
 ```
 

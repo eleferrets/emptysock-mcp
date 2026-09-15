@@ -61,6 +61,6 @@ export async function navmeshHandler(toolName: string, raw: unknown): Promise<{ 
       return textResponse({ mapId, nearestNode: point });
     }
     default:
-      notFound(toolName);
+      throw notFound(toolName);
   }
 }

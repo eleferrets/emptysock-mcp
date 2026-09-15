@@ -1,4 +1,4 @@
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { navmeshToolDefs, navmeshHandler } from './navmesh.js';
 import { physicsToolDefs, physicsHandler } from './physics.js';
 import { sceneToolDefs, sceneHandler } from './scene.js';
@@ -7,6 +7,7 @@ import { actorToolDefs, actorHandler } from './actor.js';
 import { gms2ToolDefs, gms2Handler } from './gms2.js';
 import { particleToolDefs, particleHandler } from './particle.js';
 import { vnToolDefs, vnHandler } from './vn.js';
+import { notFound } from '../lib/errors.js';
 
 type ToolHandler = (toolName: string, args: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
 
@@ -33,7 +34,7 @@ function buildRegistry(): Map<string, ToolHandler> {
 const registry = buildRegistry();
 
 /** Return all tool definitions for the ListTools response. */
-export function listTools() {
+export function listTools(): Tool[] {
   return [
     ...navmeshToolDefs,
     ...physicsToolDefs,
@@ -43,14 +44,17 @@ export function listTools() {
     ...gms2ToolDefs,
     ...particleToolDefs,
     ...vnToolDefs,
-  ];
+  ] as Tool[];
 }
 
 /** Dispatch a tool call. Throws McpError(MethodNotFound) for unknown names. */
-export async function dispatchTool(name: string, args: unknown) {
+export async function dispatchTool(
+  name: string,
+  args: unknown,
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const handler = registry.get(name);
   if (!handler) {
-    throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+    throw notFound(name);
   }
   return handler(name, args);
 }

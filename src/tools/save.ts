@@ -116,6 +116,6 @@ export async function saveHandler(toolName: string, raw: unknown): Promise<{ con
       return textResponse({ slots, dir });
     }
     default:
-      notFound(toolName);
+      throw notFound(toolName);
   }
 }
