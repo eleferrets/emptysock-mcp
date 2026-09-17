@@ -66,6 +66,15 @@ export const actorToolDefs = [
       required: ['actorId'],
     },
   },
+  {
+    name: 'actor_list',
+    description: 'List all actor IDs currently registered in the ActorSystem.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
 ] as const;
 
 export async function actorHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
@@ -81,6 +90,9 @@ export async function actorHandler(toolName: string, raw: unknown): Promise<{ co
     case 'actor_inbox_size': {
       const { actorId } = parse(ActorRefSchema, raw);
       return textResponse({ actorId, inboxSize: 0 });
+    }
+    case 'actor_list': {
+      return textResponse({ actors: [] as string[] });
     }
     default:
       throw notFound(toolName);
