@@ -190,6 +190,12 @@ describe('dispatchTool', () => {
     expect(typeof parsed.inboxSize).toBe('number');
   });
 
+  it('actor_list returns an actors array', async () => {
+    const res = await dispatchTool('actor_list', {});
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actors: unknown[] };
+    expect(Array.isArray(parsed.actors)).toBe(true);
+  });
+
   // --- Save ---
 
   it('save_list returns a slots array', async () => {

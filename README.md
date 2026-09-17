@@ -165,6 +165,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 | `actor_send_message` | Enqueue a message in a specific actor's inbox. Processed on the next ActorSystem flush. |
 | `actor_broadcast` | Broadcast a message to all registered actors. |
 | `actor_inbox_size` | Number of pending messages in an actor's inbox. |
+| `actor_list` | List all actor IDs currently registered in the ActorSystem. |
 
 **Example — send message:**
 ```json
