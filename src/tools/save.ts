@@ -22,8 +22,9 @@ const ListSchema = z.object({
 function slotPath(slot: string): string {
   // SafeRelPath already forbids '..' and absolute paths at the schema layer,
   // but we also resolve and assert containment as defence-in-depth.
-  const resolved = path.resolve(env.saveBaseDir, `${slot}.json`);
-  if (!resolved.startsWith(path.resolve(env.saveBaseDir))) {
+  const base = path.resolve(env.saveBaseDir);
+  const resolved = path.resolve(base, `${slot}.json`);
+  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
     invalidParams('path traversal detected');
   }
   return resolved;

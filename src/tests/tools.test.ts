@@ -93,15 +93,8 @@ describe('dispatchTool', () => {
     expect(parsed.args.maxDistance).toBe(100);
   });
 
-  it('physics_raycast_3d returns hit and args', async () => {
-    const res = await dispatchTool('physics_raycast_3d', {
-      origin: { x: 0, y: 0, z: 0 },
-      direction: { x: 0, y: -1, z: 0 },
-      maxDistance: 50,
-    });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { hit: null; args: { maxDistance: number } };
-    expect(parsed.hit).toBeNull();
-    expect(parsed.args.maxDistance).toBe(50);
+  it('physics_raycast_3d is not registered', async () => {
+    await expect(dispatchTool('physics_raycast_3d', {})).rejects.toThrow();
   });
 
   it('physics_body_state returns entityId and null position', async () => {
@@ -282,7 +275,7 @@ describe('dispatchTool', () => {
       ],
     });
     const yypRelPath = 'vitest-test.yyp';
-    const yypFilePath = path.join(env.saveBaseDir, yypRelPath);
+    const yypFilePath = path.join(env.assetBaseDir, yypRelPath);
     tempFiles.push(yypFilePath);
     await fsPromises.writeFile(yypFilePath, yypContent, 'utf8');
 
@@ -307,20 +300,20 @@ describe('dispatchTool', () => {
 
   // --- Particles ---
 
-  it('particle_emitter_config (get) returns a config with maxParticles', async () => {
+  it('particle_emitter_config (get) returns a config with emissionRate', async () => {
     const res = await dispatchTool('particle_emitter_config', { emitterId: 'dust' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { config: { maxParticles: number } };
-    expect(typeof parsed.config.maxParticles).toBe('number');
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { config: { emissionRate: number } };
+    expect(typeof parsed.config.emissionRate).toBe('number');
   });
 
   it('particle_emitter_config (set) returns updated: true', async () => {
     const res = await dispatchTool('particle_emitter_config', {
       emitterId: 'dust',
-      config: { maxParticles: 200 },
+      config: { emissionRate: 50, lifetimeMin: 0.5, lifetimeMax: 1.5 },
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { updated: boolean; config: { maxParticles: number } };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { updated: boolean; config: { emissionRate: number } };
     expect(parsed.updated).toBe(true);
-    expect(parsed.config.maxParticles).toBe(200);
+    expect(parsed.config.emissionRate).toBe(50);
   });
 
   // --- Story Graph ---

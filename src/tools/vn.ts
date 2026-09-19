@@ -13,7 +13,7 @@ const StoryGraphExportSchema = z.object({
 
 const StoryGraphNodeSchema = z.object({
   id: z.string(),
-  type: z.enum(['dialogue', 'choice']),
+  type: z.enum(['dialogue', 'choice', 'event', 'jump', 'variable-set']),
   x: z.number(),
   y: z.number(),
   speaker: z.string().optional(),
