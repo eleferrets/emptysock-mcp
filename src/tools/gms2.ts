@@ -73,11 +73,12 @@ export async function gms2Handler(toolName: string, raw: unknown): Promise<{ con
     case 'gms2_inspect_project': {
       const { yypPath } = parse(Gms2InspectSchema, raw);
 
-      // Resolve and enforce containment within saveBaseDir so callers cannot
+      // Resolve and enforce containment within assetBaseDir so callers cannot
       // read arbitrary files by supplying an absolute path like /etc/passwd.
-      const resolved = path.resolve(env.saveBaseDir, yypPath);
-      if (!resolved.startsWith(path.resolve(env.saveBaseDir) + path.sep) &&
-          resolved !== path.resolve(env.saveBaseDir)) {
+      const base = path.resolve(env.assetBaseDir);
+      const resolved = path.resolve(base, yypPath);
+      if (!resolved.startsWith(base + path.sep) &&
+          resolved !== base) {
         return textResponse({ error: 'Path is outside the allowed base directory' });
       }
 
@@ -128,36 +129,42 @@ export async function gms2Handler(toolName: string, raw: unknown): Promise<{ con
         api: 'LayerSystem',
         package: '@emptysock/engine',
         description:
-          'Manages named render layers, draw order, visibility, and per-layer camera parallax. ' +
-          'Entities are assigned to a layer; RenderSystem draws layers in ascending zOrder.',
+          'Manages named render layers, draw order, and entity depth sorting. ' +
+          'Entities are assigned to a named layer; LayerSystem.getLayersSorted() returns ' +
+          'layers in ascending index order for use by the renderer.',
         methods: {
-          'new LayerSystem()': 'Constructor. Create once in onLoad.',
-          'defineLayer(opts)':
-            'Register a layer. opts: { name: string, zOrder: number, parallax?: {x,y}, blendMode?: "normal"|"additive", fixed?: boolean }',
-          'addToLayer(name, entity)': 'Assign an entity to a named layer.',
-          'removeFromLayer(name, entity)': 'Remove an entity from a layer (entity is not destroyed).',
-          'setVisible(name, visible)': 'Show or hide an entire layer. Hidden layers are skipped in the render pass.',
-          'setParallax(name, {x, y})': 'Change the camera offset multiplier for a layer at runtime.',
-          'sorted()': 'Returns all layers in ascending zOrder.',
+          'new LayerSystem()': 'Constructor. Create once in onLoad and pass to RenderSystem.',
+          'defineLayer(name, index)':
+            'Register a named layer at the given sort index. Lower index renders first (behind).',
+          'addEntity(entityId, layerName, depth?)':
+            'Assign an entity to a named layer, optionally with a depth value for sub-layer sorting.',
+          'removeEntity(entityId)':
+            'Remove an entity from whichever layer it belongs to. Entity is not destroyed.',
+          'setVisible(name, visible)':
+            'Show or hide an entire layer. Hidden layers are skipped in the render pass.',
+          'getLayersSorted()':
+            'Returns LayerConfig[] sorted by ascending index.',
           'destroy()': 'Release layer state. Call in onDestroy.',
         },
-        integration:
-          'Call scene.setLayerSystem(layers) once in onLoad. Without this call, entities render in insertion order with no parallax.',
         notes: [
-          'Use zOrder gaps (0, 10, 20, …) so layers can be inserted later without renumbering.',
-          'fixed: true makes a layer ignore camera translation — correct for HUD and UI layers.',
-          'blendMode: "additive" on particle/glow layers avoids dark halos on transparent sprites.',
+          'Use index gaps (0, 10, 20, …) so layers can be inserted later without renumbering.',
+          'Pass the LayerSystem instance to RenderSystem via the layerSystem option in init().',
           'Toggling setVisible is cheaper than destroying and re-adding entities.',
         ],
         exampleCode: `
-import { LayerSystem } from '@emptysock/engine';
+import { LayerSystem, RenderSystem } from '@emptysock/engine';
 const layers = new LayerSystem();
-layers.defineLayer({ name: 'Background', zOrder: 0,  parallax: { x: 0.2, y: 0.2 } });
-layers.defineLayer({ name: 'Gameplay',   zOrder: 20 });
-layers.defineLayer({ name: 'UI',         zOrder: 40, fixed: true });
-scene.setLayerSystem(layers);
-layers.addToLayer('Gameplay', player);
-layers.setVisible('Background', false);
+layers.defineLayer('background', 0);
+layers.defineLayer('gameplay', 20);
+layers.defineLayer('ui', 40);
+
+const renderer = new RenderSystem();
+await renderer.init({ layerSystem: layers });
+
+layers.addEntity(player.id, 'gameplay');
+layers.addEntity(bg.id, 'background');
+layers.setVisible('background', true);
+
 // in onDestroy:
 layers.destroy();
         `.trim(),

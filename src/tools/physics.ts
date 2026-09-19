@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { parse, SafeId, Vec2, Vec3, GameNum } from '../lib/validate.js';
+import { parse, SafeId, Vec2, GameNum } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
 
@@ -10,12 +10,6 @@ const Raycast2DSchema = z.object({
   layerMask: z.number().int().nonnegative().optional(),
 });
 
-const Raycast3DSchema = z.object({
-  origin: Vec3,
-  direction: Vec3,
-  maxDistance: GameNum.positive(),
-  layerMask: z.number().int().nonnegative().optional(),
-});
 
 const OverlapCircleSchema = z.object({
   center: Vec2,
@@ -36,20 +30,6 @@ export const physicsToolDefs = [
       properties: {
         origin:      { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, required: ['x','y'] },
         direction:   { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, required: ['x','y'] },
-        maxDistance: { type: 'number', minimum: 0 },
-        layerMask:   { type: 'number' },
-      },
-      required: ['origin', 'direction', 'maxDistance'],
-    },
-  },
-  {
-    name: 'physics_raycast_3d',
-    description: 'Cast a ray in 3D physics space (Rapier3D) and return the first hit.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        origin:      { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } }, required: ['x','y','z'] },
-        direction:   { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } }, required: ['x','y','z'] },
         maxDistance: { type: 'number', minimum: 0 },
         layerMask:   { type: 'number' },
       },
@@ -86,10 +66,6 @@ export async function physicsHandler(toolName: string, raw: unknown): Promise<{ 
   switch (toolName) {
     case 'physics_raycast_2d': {
       const args = parse(Raycast2DSchema, raw);
-      return textResponse({ hit: null, args });
-    }
-    case 'physics_raycast_3d': {
-      const args = parse(Raycast3DSchema, raw);
       return textResponse({ hit: null, args });
     }
     case 'physics_overlap_circle': {
