@@ -276,7 +276,7 @@ describe('dispatchTool', () => {
       ],
     });
     const yypRelPath = 'vitest-test.yyp';
-    const yypFilePath = path.join(env.saveBaseDir, yypRelPath);
+    const yypFilePath = path.join(env.assetBaseDir, yypRelPath);
     tempFiles.push(yypFilePath);
     await fsPromises.writeFile(yypFilePath, yypContent, 'utf8');
 

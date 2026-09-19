@@ -13,5 +13,5 @@ export function invalidParams(message: string): never {
 }
 
 export function notFound(name: string): never {
-  throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
+  throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
 }
