@@ -11,14 +11,43 @@ const StoryGraphExportSchema = z.object({
   graphId: SafeId.optional(),
 });
 
+/**
+ * Mirrors VariableCondition from @emptysock/engine's VariableStore. Gates
+ * `condition` nodes and conditional (`when`) choice options.
+ */
+const VariableConditionSchema = z.union([
+  z.object({ kind: z.literal('switch'), index: z.number().int(), equals: z.boolean() }),
+  z.object({
+    kind: z.literal('variable'),
+    index: z.number().int(),
+    op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte']),
+    value: z.number(),
+  }),
+]);
+
+const ChoiceOptionSchema = z.object({
+  label: z.string(),
+  next: z.string(),
+  when: VariableConditionSchema.optional(),
+});
+
 const StoryGraphNodeSchema = z.object({
   id: z.string(),
-  type: z.enum(['dialogue', 'choice', 'event', 'jump', 'variable-set']),
+  type: z.enum(['dialogue', 'choice', 'event', 'jump', 'variable-set', 'condition']),
   x: z.number(),
   y: z.number(),
   speaker: z.string().optional(),
-  text: z.string(),
-  options: z.array(z.string()).optional(),
+  text: z.string().optional(),
+  options: z.array(ChoiceOptionSchema).optional(),
+  eventName: z.string().optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+  target: z.string().optional(),
+  variableKey: z.string().optional(),
+  variableValue: z.unknown().optional(),
+  condition: VariableConditionSchema.optional(),
+  ifTrue: z.string().optional(),
+  ifFalse: z.string().optional(),
+  next: z.string().optional(),
 });
 
 const StoryGraphEdgeSchema = z.object({
@@ -48,7 +77,7 @@ export const vnToolDefs = [
   {
     name: 'story_graph_export',
     description:
-      'Read the Story Graph (VNSystem) for a named scene from {assetBaseDir}/{sceneId}/{graphId}.storyGraph.json and return the parsed nodes, edges, and startNodeId.',
+      'Read the Story Graph (VNSystem) for a named scene from {assetBaseDir}/{sceneId}/{graphId}.storyGraph.json and return the parsed nodes, edges, and startNodeId. Node types include the VariableStore-driven "condition" type and choice options may carry a "when" condition.',
     inputSchema: {
       type: 'object',
       properties: {

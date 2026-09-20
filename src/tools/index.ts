@@ -7,6 +7,7 @@ import { actorToolDefs, actorHandler } from './actor.js';
 import { gms2ToolDefs, gms2Handler } from './gms2.js';
 import { particleToolDefs, particleHandler } from './particle.js';
 import { vnToolDefs, vnHandler } from './vn.js';
+import { battleToolDefs, battleHandler } from './battle.js';
 import { notFound } from '../lib/errors.js';
 
 type ToolHandler = (toolName: string, args: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
@@ -27,6 +28,7 @@ function buildRegistry(): Map<string, ToolHandler> {
   register(gms2ToolDefs,      gms2Handler);
   register(particleToolDefs,  particleHandler);
   register(vnToolDefs,        vnHandler);
+  register(battleToolDefs,    battleHandler);
 
   return map;
 }
@@ -44,6 +46,7 @@ export function listTools(): Tool[] {
     ...gms2ToolDefs,
     ...particleToolDefs,
     ...vnToolDefs,
+    ...battleToolDefs,
   ] as Tool[];
 }
 

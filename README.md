@@ -1,6 +1,6 @@
 # emptysock-mcp
 
-Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. Exposes engine systems — NavMesh, Physics, Scene, Save, Actor, Particles, and Story Graph — as MCP tools consumable by Claude Desktop, AI agents, and the Claude API.
+Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. Exposes engine systems — NavMesh, Physics, Scene, Save, Actor, Particles, Story Graph, and Battle — as MCP tools consumable by Claude Desktop, AI agents, and the Claude API.
 
 ---
 
@@ -139,10 +139,12 @@ Restart Claude Desktop. The EmptySock tools will appear in the tool picker.
 
 All save tools are sandboxed to `SAVE_BASE_DIR`. Path traversal (`..`, absolute paths) is rejected at the schema layer and again at resolution time.
 
+Slots are read and written as the engine's default `GameSaveSlot` shape (`{ id, scene, data, timestamp, playtime }` — `SaveSystem.ts` in `@emptysock/engine`). `SaveSystem` itself is generic over any Zod schema passed to its constructor, but this tool only supports the default shape: there is no way to transmit a Zod schema over MCP's JSON-RPC wire protocol, so a game using a custom `SaveSystem<TSlot>` schema should treat these tools as opaque JSON storage rather than relying on the auto-filled `id`/`timestamp`/`playtime` convenience.
+
 | Tool | Description |
 |---|---|
-| `save_read` | Read a save slot from disk and return its JSON data. |
-| `save_write` | Write a JSON object to a named save slot. |
+| `save_read` | Read a save slot from disk and return it as a `GameSaveSlot`. |
+| `save_write` | Write a `GameSaveSlot` to a named save slot. `timestamp` defaults to `Date.now()`, `playtime` defaults to `0`. |
 | `save_delete` | Delete a save slot. |
 | `save_list` | List all available save slots. |
 
@@ -150,6 +152,7 @@ All save tools are sandboxed to `SAVE_BASE_DIR`. Path traversal (`..`, absolute 
 ```json
 {
   "slot": "autosave",
+  "scene": "bridge-level",
   "data": { "level": 3, "score": 4200, "checkpoint": "bridge" }
 }
 ```
@@ -183,7 +186,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `gms2_inspect_project` | Read a GameMaker Studio 2 `.yyp` project file and return a JSON summary: project name, asset counts, and lists of object and script names. Read-only. |
+| `gms2_inspect_project` | Read a GameMaker Studio 2 `.yyp` project file and return a JSON summary: project name, asset counts, and lists of object and script names. Read-only. Tolerates the trailing commas real GameMaker projects write (not strict JSON) and reads the project name from the real `"%Name"` key. |
 | `emptysock_layer_info` | Reference information about the EmptySock LayerSystem API — available methods and usage examples. |
 
 ---
@@ -213,11 +216,24 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `story_graph_export` | Reads `{assetBaseDir}/{sceneId}/{graphId}.storyGraph.json` from disk and returns the parsed Story Graph with nodes, edges, and startNodeId. Returns an error object if the file does not exist. |
+| `story_graph_export` | Reads `{assetBaseDir}/{sceneId}/{graphId}.storyGraph.json` from disk and returns the parsed Story Graph with nodes, edges, and startNodeId. Node types include the VariableStore-driven `"condition"` type; choice options may carry a `"when"` `VariableCondition`. Returns an error object if the file does not exist. |
 
 **Example:**
 ```json
 { "sceneId": "chapter1", "graphId": "intro" }
+```
+
+---
+
+### Battle
+
+| Tool | Description |
+|---|---|
+| `battle_estimate_damage` | Compute normal/critical/expected damage using `BattleSystem`'s default physical formula, given effective attack/defense, a power multiplier, crit chance, and crit multiplier. Read-only — it does not drive a live `BattleSystem` instance (this server has no live engine connection); use it to sanity-check combat balance numbers. |
+
+**Example:**
+```json
+{ "effectiveAttack": 50, "effectiveDefense": 20, "power": 1.2 }
 ```
 
 ---
