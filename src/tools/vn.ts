@@ -13,7 +13,7 @@ const StoryGraphExportSchema = z.object({
 
 /**
  * Mirrors VariableCondition from @emptysock/engine's VariableStore. Gates
- * `condition` nodes and conditional (`when`) choice options.
+ * `condition` nodes and, via `optionWhens`, individual choice options.
  */
 const VariableConditionSchema = z.union([
   z.object({ kind: z.literal('switch'), index: z.number().int(), equals: z.boolean() }),
@@ -25,29 +25,33 @@ const VariableConditionSchema = z.union([
   }),
 ]);
 
-const ChoiceOptionSchema = z.object({
-  label: z.string(),
-  next: z.string(),
-  when: VariableConditionSchema.optional(),
-});
-
+/**
+ * Mirrors StoryGraphNode from @emptysock/engine's VNScriptConvert.ts — the
+ * visual-editor representation persisted as .storyGraph.json. Note this is
+ * NOT the same shape as a VNSystem DialogueNode: choice options are plain
+ * label strings (the `next` target lives on the edge, keyed by fromPort),
+ * and a `condition` node's true/false targets likewise come from its edges
+ * (fromPort 0 = true, fromPort 1 = optional false), not from fields on the
+ * node itself.
+ */
 const StoryGraphNodeSchema = z.object({
   id: z.string(),
-  type: z.enum(['dialogue', 'choice', 'event', 'jump', 'variable-set', 'condition']),
+  type: z.enum(['dialogue', 'choice', 'condition']),
   x: z.number(),
   y: z.number(),
   speaker: z.string().optional(),
-  text: z.string().optional(),
-  options: z.array(ChoiceOptionSchema).optional(),
-  eventName: z.string().optional(),
-  data: z.record(z.string(), z.unknown()).optional(),
-  target: z.string().optional(),
-  variableKey: z.string().optional(),
-  variableValue: z.unknown().optional(),
+  text: z.string(),
+  options: z.array(z.string()).optional(),
+  /**
+   * Per-option `when` gate, aligned by index with `options`. Present only on
+   * `"choice"` nodes; an `undefined` entry (or a shorter/absent array) means
+   * that option has no condition and is always shown.
+   */
+  // JSON has no `undefined` — a serialized array's absent entries round-trip as `null`,
+  // so each slot accepts a VariableCondition or null (no condition for that option).
+  optionWhens: z.array(VariableConditionSchema.nullable()).optional(),
+  /** Present only on `"condition"` nodes — the gate evaluated to pick a branch. */
   condition: VariableConditionSchema.optional(),
-  ifTrue: z.string().optional(),
-  ifFalse: z.string().optional(),
-  next: z.string().optional(),
 });
 
 const StoryGraphEdgeSchema = z.object({
@@ -77,7 +81,7 @@ export const vnToolDefs = [
   {
     name: 'story_graph_export',
     description:
-      'Read the Story Graph (VNSystem) for a named scene from {assetBaseDir}/{sceneId}/{graphId}.storyGraph.json and return the parsed nodes, edges, and startNodeId. Node types include the VariableStore-driven "condition" type and choice options may carry a "when" condition.',
+      'Read the Story Graph (VNSystem) for a named scene from {assetBaseDir}/{sceneId}/{graphId}.storyGraph.json and return the parsed nodes, edges, and startNodeId. Node types are "dialogue", "choice", and the VariableStore-driven "condition" type. Choice nodes carry option labels in `options` and, when any option is gated, a parallel `optionWhens` array of VariableCondition; a condition node carries a single `condition`. Branch targets (a choice option\'s destination, or a condition node\'s true/false destinations) are edges, not node fields: edges are keyed by `fromPort` (condition: 0 = true, 1 = false; choice: index into `options`).',
     inputSchema: {
       type: 'object',
       properties: {

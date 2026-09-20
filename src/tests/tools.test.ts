@@ -97,11 +97,20 @@ describe('dispatchTool', () => {
     await expect(dispatchTool('physics_raycast_3d', {})).rejects.toThrow();
   });
 
-  it('physics_body_state returns entityId and null position', async () => {
+  it('physics_body_state returns entityId, null position, and null PhysicsBody handles', async () => {
     const res = await dispatchTool('physics_body_state', { entityId: 'body-001' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { entityId: string; position: null };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      entityId: string;
+      position: null;
+      bodyHandle: null;
+      colliderHandle: null;
+      isSensor: null;
+    };
     expect(parsed.entityId).toBe('body-001');
     expect(parsed.position).toBeNull();
+    expect(parsed.bodyHandle).toBeNull();
+    expect(parsed.colliderHandle).toBeNull();
+    expect(parsed.isSensor).toBeNull();
   });
 
   // --- Scene ---
@@ -357,11 +366,41 @@ describe('dispatchTool', () => {
   it('particle_emitter_config (set) returns updated: true', async () => {
     const res = await dispatchTool('particle_emitter_config', {
       emitterId: 'dust',
-      config: { emissionRate: 50, lifetimeMin: 0.5, lifetimeMax: 1.5 },
+      config: { emissionRate: 50, lifetime: { min: 0.5, max: 1.5 }, shape: 'circle', shapeRadius: 20 },
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { updated: boolean; config: { emissionRate: number } };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      updated: boolean;
+      config: { emissionRate: number; lifetime: { min: number; max: number }; shape: string; shapeRadius: number };
+    };
     expect(parsed.updated).toBe(true);
     expect(parsed.config.emissionRate).toBe(50);
+    expect(parsed.config.lifetime).toEqual({ min: 0.5, max: 1.5 });
+    expect(parsed.config.shape).toBe('circle');
+    expect(parsed.config.shapeRadius).toBe(20);
+  });
+
+  it('particle_emitter_config (set) rejects an unknown shape value', async () => {
+    await expect(
+      dispatchTool('particle_emitter_config', {
+        emitterId: 'dust',
+        config: { shape: 'triangle' },
+      }),
+    ).rejects.toThrow(McpError);
+  });
+
+  it('particle_emitter_config (set) accepts a velocity range and colorGradient', async () => {
+    const res = await dispatchTool('particle_emitter_config', {
+      emitterId: 'dust',
+      config: {
+        velocity: { x: { min: -10, max: 10 }, y: { min: -20, max: 0 } },
+        colorGradient: [0xff0000, 0x00ff00],
+      },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      config: { velocity: { x: { min: number; max: number } }; colorGradient: number[] };
+    };
+    expect(parsed.config.velocity.x).toEqual({ min: -10, max: 10 });
+    expect(parsed.config.colorGradient).toEqual([0xff0000, 0x00ff00]);
   });
 
   // --- Story Graph ---
@@ -382,22 +421,23 @@ describe('dispatchTool', () => {
           x: 100,
           y: 0,
           text: 'Pick one:',
-          options: [
-            { label: 'Yes', next: 'node-3' },
-            { label: 'No (locked)', next: 'node-4', when: { kind: 'switch', index: 1, equals: true } },
-          ],
+          options: ['Yes', 'No (locked)'],
+          optionWhens: [undefined, { kind: 'switch', index: 1, equals: true }],
         },
         {
           id: 'node-3',
           type: 'condition',
           x: 200,
           y: 0,
+          text: 'var[2] >= 10',
           condition: { kind: 'variable', index: 2, op: 'gte', value: 10 },
-          ifTrue: 'node-1',
-          ifFalse: 'node-2',
         },
       ],
-      edges: [{ id: 'edge-1', from: 'node-1', fromPort: 0, to: 'node-2' }],
+      edges: [
+        { id: 'edge-1', from: 'node-1', fromPort: 0, to: 'node-2' },
+        { id: 'edge-2', from: 'node-3', fromPort: 0, to: 'node-1' },
+        { id: 'edge-3', from: 'node-3', fromPort: 1, to: 'node-2' },
+      ],
     };
 
     await fsPromises.mkdir(sceneDir, { recursive: true });
@@ -412,13 +452,48 @@ describe('dispatchTool', () => {
     expect(Array.isArray(parsed.nodes)).toBe(true);
     expect(parsed.nodes).toHaveLength(3);
     expect(Array.isArray(parsed.edges)).toBe(true);
-    expect(parsed.edges).toHaveLength(1);
+    expect(parsed.edges).toHaveLength(3);
     expect(parsed.startNodeId).toBe('node-1');
     const conditionNode = parsed.nodes.find((n) => (n as { id: string }).id === 'node-3') as
       | { type: string; condition: { kind: string } }
       | undefined;
     expect(conditionNode?.type).toBe('condition');
     expect(conditionNode?.condition.kind).toBe('variable');
+    const choiceNode = parsed.nodes.find((n) => (n as { id: string }).id === 'node-2') as
+      | { options: string[]; optionWhens: Array<{ kind: string } | null> }
+      | undefined;
+    expect(choiceNode?.options).toEqual(['Yes', 'No (locked)']);
+    expect(choiceNode?.optionWhens?.[0]).toBeNull();
+    expect(choiceNode?.optionWhens?.[1]?.kind).toBe('switch');
+  });
+
+  it('story_graph_export returns invalid-format error for a legacy pre-drift shape (options as objects)', async () => {
+    const sceneId = 'vitest-sg-legacy-scene';
+    const sceneDir = path.join(env.assetBaseDir, sceneId);
+    const filePath = path.join(sceneDir, 'default.storyGraph.json');
+    tempDirs.push(sceneDir);
+
+    const legacyGraph = {
+      startNodeId: 'node-1',
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'choice',
+          x: 0,
+          y: 0,
+          text: 'Pick one:',
+          options: [{ label: 'Yes', next: 'node-2' }],
+        },
+      ],
+      edges: [],
+    };
+
+    await fsPromises.mkdir(sceneDir, { recursive: true });
+    await fsPromises.writeFile(filePath, JSON.stringify(legacyGraph), 'utf8');
+
+    const res = await dispatchTool('story_graph_export', { sceneId });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: string };
+    expect(parsed.error).toBe('invalid story graph format');
   });
 
   it('story_graph_export returns error object for a non-existent scene', async () => {
@@ -437,6 +512,99 @@ describe('dispatchTool', () => {
   it('story_graph_export rejects a sceneId with path traversal characters', async () => {
     await expect(
       dispatchTool('story_graph_export', { sceneId: '../evil' }),
+    ).rejects.toThrow(McpError);
+  });
+
+  // --- VisualScript ---
+
+  it('visualscript_validate reports valid: true for a well-formed graph', async () => {
+    const res = await dispatchTool('visualscript_validate', {
+      graph: {
+        nodes: [
+          { id: 'update-1', kind: 'onUpdate', next: ['branch-1'] },
+          {
+            id: 'branch-1',
+            kind: 'branch',
+            next: ['set-1', 'set-2'],
+            variableIndex: 0,
+            comparator: 'gt',
+            value: 5,
+          },
+          { id: 'set-1', kind: 'setSwitch', next: [], switchIndex: 0, value: true },
+          { id: 'set-2', kind: 'setSwitch', next: [], switchIndex: 0, value: false },
+        ],
+        connections: [
+          { id: 'c1', from: 'update-1', to: 'branch-1', fromPort: 0 },
+          { id: 'c2', from: 'branch-1', to: 'set-1', fromPort: 0 },
+          { id: 'c3', from: 'branch-1', to: 'set-2', fromPort: 1 },
+        ],
+      },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      valid: boolean;
+      nodeCount: number;
+      unreachableNodeIds: string[];
+      issues: unknown[];
+    };
+    expect(parsed.valid).toBe(true);
+    expect(parsed.nodeCount).toBe(4);
+    expect(parsed.unreachableNodeIds).toEqual([]);
+    expect(parsed.issues).toEqual([]);
+  });
+
+  it('visualscript_validate flags a dangling next target as an error', async () => {
+    const res = await dispatchTool('visualscript_validate', {
+      graph: {
+        nodes: [{ id: 'update-1', kind: 'onUpdate', next: ['missing-node'] }],
+        connections: [],
+      },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      valid: boolean;
+      issues: Array<{ severity: string; message: string }>;
+    };
+    expect(parsed.valid).toBe(false);
+    expect(parsed.issues.some((i) => i.severity === 'error' && i.message.includes('missing-node'))).toBe(true);
+  });
+
+  it('visualscript_validate flags an unreachable node as a warning, not an error', async () => {
+    const res = await dispatchTool('visualscript_validate', {
+      graph: {
+        nodes: [
+          { id: 'update-1', kind: 'onUpdate', next: [] },
+          { id: 'orphan-1', kind: 'sequence', next: [] },
+        ],
+        connections: [],
+      },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      valid: boolean;
+      unreachableNodeIds: string[];
+      issues: Array<{ severity: string }>;
+    };
+    expect(parsed.valid).toBe(true);
+    expect(parsed.unreachableNodeIds).toEqual(['orphan-1']);
+    expect(parsed.issues.some((i) => i.severity === 'warning')).toBe(true);
+  });
+
+  it('visualscript_validate warns when a graph has no entry node', async () => {
+    const res = await dispatchTool('visualscript_validate', {
+      graph: {
+        nodes: [{ id: 'seq-1', kind: 'sequence', next: [] }],
+        connections: [],
+      },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      entryNodeIds: string[];
+      issues: Array<{ message: string }>;
+    };
+    expect(parsed.entryNodeIds).toEqual([]);
+    expect(parsed.issues.some((i) => i.message.includes('no onUpdate or onEvent entry node'))).toBe(true);
+  });
+
+  it('visualscript_validate rejects malformed input', async () => {
+    await expect(
+      dispatchTool('visualscript_validate', { graph: { nodes: 'not-an-array', connections: [] } }),
     ).rejects.toThrow(McpError);
   });
 

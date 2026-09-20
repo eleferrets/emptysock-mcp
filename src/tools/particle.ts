@@ -3,34 +3,58 @@ import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
 
-const DEFAULT_CONFIG = {
+/**
+ * Mirrors ParticleEmitterOptions from @emptysock/engine's ParticleSystem.ts.
+ * Kept in sync by hand since there is no shared runtime import between this
+ * server and the engine package.
+ */
+const RangeSchema = z.object({ min: z.number(), max: z.number() });
+
+const EmitterOptionsSchema = z.object({
+  texture: z.string().max(256).optional(),
+  emissionRate: z.number().nonnegative().optional(),
+  lifetime: RangeSchema.optional(),
+  velocity: z
+    .object({
+      x: RangeSchema.optional(),
+      y: RangeSchema.optional(),
+    })
+    .optional(),
+  acceleration: z.object({ x: z.number().optional(), y: z.number().optional() }).optional(),
+  startScale: z.number().nonnegative().optional(),
+  endScale: z.number().nonnegative().optional(),
+  startAlpha: z.number().min(0).max(1).optional(),
+  endAlpha: z.number().min(0).max(1).optional(),
+  colorGradient: z.array(z.number().int().nonnegative()).optional(),
+  shape: z.enum(['point', 'circle', 'rectangle', 'line']).optional(),
+  shapeRadius: z.number().nonnegative().optional(),
+  shapeWidth: z.number().nonnegative().optional(),
+  shapeHeight: z.number().nonnegative().optional(),
+  rotationSpeed: z.number().optional(),
+  maxParticles: z.number().int().positive().optional(),
+});
+
+const DEFAULT_CONFIG: z.infer<typeof EmitterOptionsSchema> = {
   emissionRate: 30,
-  lifetimeMin: 0.8,
-  lifetimeMax: 1.5,
+  lifetime: { min: 0.8, max: 1.5 },
   startAlpha: 1,
   endAlpha: 0,
   startScale: 1,
   endScale: 0.2,
+  shape: 'point',
+  maxParticles: 200,
 };
 
 const EmitterConfigSchema = z.object({
   emitterId: SafeId,
-  config: z.object({
-    emissionRate: z.number().nonnegative().optional(),
-    lifetimeMin: z.number().nonnegative().optional(),
-    lifetimeMax: z.number().nonnegative().optional(),
-    startAlpha: z.number().min(0).max(1).optional(),
-    endAlpha: z.number().min(0).max(1).optional(),
-    startScale: z.number().nonnegative().optional(),
-    endScale: z.number().nonnegative().optional(),
-  }).optional(),
+  config: EmitterOptionsSchema.optional(),
 });
 
 export const particleToolDefs = [
   {
     name: 'particle_emitter_config',
     description:
-      'Get or set a ParticleSystem emitter configuration by emitter ID. Omit `config` to read; provide `config` to write.',
+      'Get or set a ParticleSystem emitter configuration (ParticleEmitterOptions) by emitter ID. Omit `config` to read; provide `config` to write.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,13 +62,35 @@ export const particleToolDefs = [
         config: {
           type: 'object',
           properties: {
+            texture: { type: 'string', description: 'Texture / sprite name for each particle.' },
             emissionRate: { type: 'number', description: 'Particles emitted per second.' },
-            lifetimeMin: { type: 'number', description: 'Minimum particle lifetime in seconds.' },
-            lifetimeMax: { type: 'number', description: 'Maximum particle lifetime in seconds.' },
-            startAlpha: { type: 'number', minimum: 0, maximum: 1 },
-            endAlpha: { type: 'number', minimum: 0, maximum: 1 },
+            lifetime: {
+              type: 'object',
+              properties: { min: { type: 'number' }, max: { type: 'number' } },
+              description: 'Particle lifetime range in seconds.',
+            },
+            velocity: {
+              type: 'object',
+              properties: {
+                x: { type: 'object', properties: { min: { type: 'number' }, max: { type: 'number' } } },
+                y: { type: 'object', properties: { min: { type: 'number' }, max: { type: 'number' } } },
+              },
+            },
+            acceleration: {
+              type: 'object',
+              properties: { x: { type: 'number' }, y: { type: 'number' } },
+            },
             startScale: { type: 'number', minimum: 0 },
             endScale: { type: 'number', minimum: 0 },
+            startAlpha: { type: 'number', minimum: 0, maximum: 1 },
+            endAlpha: { type: 'number', minimum: 0, maximum: 1 },
+            colorGradient: { type: 'array', items: { type: 'number' }, description: 'Hex colour values sampled across particle lifetime.' },
+            shape: { type: 'string', enum: ['point', 'circle', 'rectangle', 'line'] },
+            shapeRadius: { type: 'number', minimum: 0 },
+            shapeWidth: { type: 'number', minimum: 0 },
+            shapeHeight: { type: 'number', minimum: 0 },
+            rotationSpeed: { type: 'number' },
+            maxParticles: { type: 'number', minimum: 1 },
           },
         },
       },

@@ -102,7 +102,7 @@ Restart Claude Desktop. The EmptySock tools will appear in the tool picker.
 | `physics_raycast_2d` | Cast a ray in 2D physics space; returns first hit entity, hit point, and normal. |
 | `physics_raycast_3d` | Cast a ray in 3D physics space (Rapier3D); returns first hit. |
 | `physics_overlap_circle` | All entity IDs whose 2D colliders overlap a circle. |
-| `physics_body_state` | Current position, velocity, and angular velocity of a physics body by entity ID. |
+| `physics_body_state` | Current position, velocity, angular velocity, and PhysicsBody state (`bodyHandle`, `colliderHandle`, `isSensor`) of a physics body by entity ID. |
 
 **Example — overlap circle:**
 ```json
@@ -195,7 +195,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `particle_emitter_config` | Get or set a ParticleSystem emitter configuration by emitter ID. Omit `config` to read; provide `config` to write. |
+| `particle_emitter_config` | Get or set a ParticleSystem emitter configuration (`ParticleEmitterOptions`) by emitter ID. Omit `config` to read; provide `config` to write. |
 
 **Example — read config:**
 ```json
@@ -206,7 +206,13 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 ```json
 {
   "emitterId": "dust",
-  "config": { "maxParticles": 200, "emitRate": 60, "colorStart": "#ffcc00" }
+  "config": {
+    "emissionRate": 60,
+    "lifetime": { "min": 0.5, "max": 1.2 },
+    "shape": "circle",
+    "shapeRadius": 20,
+    "colorGradient": [16766464, 16711680]
+  }
 }
 ```
 
@@ -216,7 +222,7 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 
 | Tool | Description |
 |---|---|
-| `story_graph_export` | Reads `{assetBaseDir}/{sceneId}/{graphId}.storyGraph.json` from disk and returns the parsed Story Graph with nodes, edges, and startNodeId. Node types include the VariableStore-driven `"condition"` type; choice options may carry a `"when"` `VariableCondition`. Returns an error object if the file does not exist. |
+| `story_graph_export` | Reads `{assetBaseDir}/{sceneId}/{graphId}.storyGraph.json` from disk and returns the parsed Story Graph with nodes, edges, and startNodeId. Node types are `"dialogue"`, `"choice"`, and the VariableStore-driven `"condition"` type. Choice nodes carry option labels in `options` (a plain string array) and, when any option is gated, a parallel `optionWhens` array of `VariableCondition \| null`; a `condition` node carries a single `condition`. Branch destinations (a choice option's target, or a condition node's true/false targets) live on the graph's `edges`, keyed by `fromPort` — not on the node. Returns an error object if the file does not exist or does not match this shape. |
 
 **Example:**
 ```json
@@ -234,6 +240,31 @@ Slot names are alphanumeric + dashes/underscores only (e.g. `slot1`, `autosave`,
 **Example:**
 ```json
 { "effectiveAttack": 50, "effectiveDefense": 20, "power": 1.2 }
+```
+
+---
+
+### VisualScript
+
+| Tool | Description |
+|---|---|
+| `visualscript_validate` | Statically validate a `VisualScriptGraph` (the node graph `VisualScriptComponent` interprets): duplicate node ids, dangling `next`/connection targets, nodes unreachable from an `onUpdate`/`onEvent` entry node, and `branch` nodes missing a false-branch. Read-only — does not run the graph against a live `VariableStore` or `ActorSystem` (this server has no live engine connection); use it to sanity-check a graph before handing it to a game. |
+
+**Example:**
+```json
+{
+  "graph": {
+    "nodes": [
+      { "id": "update-1", "kind": "onUpdate", "next": ["branch-1"] },
+      { "id": "branch-1", "kind": "branch", "next": ["set-1"], "variableIndex": 0, "comparator": "gt", "value": 5 },
+      { "id": "set-1", "kind": "setSwitch", "next": [], "switchIndex": 0, "value": true }
+    ],
+    "connections": [
+      { "id": "c1", "from": "update-1", "to": "branch-1", "fromPort": 0 },
+      { "id": "c2", "from": "branch-1", "to": "set-1", "fromPort": 0 }
+    ]
+  }
+}
 ```
 
 ---
