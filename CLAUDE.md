@@ -18,12 +18,13 @@ src/
     validate.ts      Zod schemas + parse() helper; SafeRelPath, SafeId, Vec2, Vec3, GameNum
   tools/
     index.ts         Registry — maps tool name → handler; dispatchTool(); listTools()
-    actor.ts         actor_send_message, actor_broadcast, actor_inbox_size
+    actor.ts         actor_send_message, actor_broadcast, actor_inbox_size, actor_list
+    battle.ts        battle_estimate_damage
     gms2.ts          gms2_inspect_project, emptysock_layer_info
     navmesh.ts       navmesh_find_path, navmesh_nearest_node
     particle.ts      particle_emitter_config
-    physics.ts       physics_raycast_2d, physics_raycast_3d, physics_overlap_circle, physics_body_state
-    save.ts          save_read, save_write, save_delete, save_list
+    physics.ts       physics_raycast_2d, physics_overlap_circle, physics_body_state
+    save.ts          save_read, save_write, save_delete, save_list (GameSaveSlot shape)
     scene.ts         scene_list_entities, scene_entity_info, scene_get_component, scene_create_entity
     vn.ts            story_graph_export
 ```

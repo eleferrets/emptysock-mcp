@@ -197,38 +197,59 @@ describe('dispatchTool', () => {
     expect(Array.isArray(parsed.slots)).toBe(true);
   });
 
-  it('save_write writes slot data to disk', async () => {
+  it('save_write writes a GameSaveSlot to disk with default timestamp/playtime', async () => {
     const slot = 'vitest-write-test';
     const data = { score: 42, level: 3 };
     const filePath = path.join(env.saveBaseDir, `${slot}.json`);
     tempFiles.push(filePath);
 
-    const res = await dispatchTool('save_write', { slot, data });
+    const res = await dispatchTool('save_write', { slot, scene: 'level1', data });
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { written: boolean; slot: string };
     expect(parsed.written).toBe(true);
     expect(parsed.slot).toBe(slot);
 
-    const fileContent = await fsPromises.readFile(filePath, 'utf8');
-    expect(JSON.parse(fileContent)).toEqual(data);
+    const fileContent = JSON.parse(await fsPromises.readFile(filePath, 'utf8')) as {
+      id: string;
+      scene: string;
+      data: typeof data;
+      timestamp: number;
+      playtime: number;
+    };
+    expect(fileContent.id).toBe(slot);
+    expect(fileContent.scene).toBe('level1');
+    expect(fileContent.data).toEqual(data);
+    expect(typeof fileContent.timestamp).toBe('number');
+    expect(fileContent.playtime).toBe(0);
   });
 
   it('save_write rejects path traversal in slot name', async () => {
     await expect(
-      dispatchTool('save_write', { slot: '../etc/passwd', data: {} }),
+      dispatchTool('save_write', { slot: '../etc/passwd', scene: 'x', data: {} }),
     ).rejects.toThrow(McpError);
   });
 
-  it('save_read returns slot data for an existing file', async () => {
+  it('save_read returns a GameSaveSlot for an existing file', async () => {
     const slot = 'vitest-read-test';
-    const data = { hp: 100, name: 'hero' };
+    const record = { id: slot, scene: 'town', data: { hp: 100, name: 'hero' }, timestamp: 1000, playtime: 5 };
     const filePath = path.join(env.saveBaseDir, `${slot}.json`);
     tempFiles.push(filePath);
-    await fsPromises.writeFile(filePath, JSON.stringify(data), 'utf8');
+    await fsPromises.writeFile(filePath, JSON.stringify(record), 'utf8');
 
     const res = await dispatchTool('save_read', { slot });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { slot: string; data: typeof data };
-    expect(parsed.slot).toBe(slot);
-    expect(parsed.data).toEqual(data);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as typeof record;
+    expect(parsed).toEqual(record);
+  });
+
+  it('save_read returns an error for a slot that does not match GameSaveSlot', async () => {
+    const slot = 'vitest-bad-shape-test';
+    const filePath = path.join(env.saveBaseDir, `${slot}.json`);
+    tempFiles.push(filePath);
+    await fsPromises.writeFile(filePath, JSON.stringify({ foo: 'bar' }), 'utf8');
+
+    const res = await dispatchTool('save_read', { slot });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: string };
+    expect(typeof parsed.error).toBe('string');
+    expect(parsed.error.length).toBeGreaterThan(0);
   });
 
   it('save_read returns a textResponse with error for a non-existent slot', async () => {
@@ -292,6 +313,33 @@ describe('dispatchTool', () => {
     expect(parsed.scriptNames).toEqual(['scr_init']);
   });
 
+  it('gms2_inspect_project tolerates real GameMaker trailing commas and reads the "%Name" key', async () => {
+    // Real .yyp files (unlike strict JSON) carry a trailing comma after the
+    // last property of every object/array, and store the project name
+    // under "%Name" rather than "name".
+    const yypContent =
+      '{"%Name":"Trailing Comma Project","resources":[' +
+      '{"id":{"name":"obj_player","path":"objects/obj_player/obj_player.yy",},},' +
+      '{"id":{"name":"scr_init","path":"scripts/scr_init/scr_init.yy",},},' +
+      '],}';
+    const yypRelPath = 'vitest-trailing-comma-test.yyp';
+    const yypFilePath = path.join(env.assetBaseDir, yypRelPath);
+    tempFiles.push(yypFilePath);
+    await fsPromises.writeFile(yypFilePath, yypContent, 'utf8');
+
+    const res = await dispatchTool('gms2_inspect_project', { yypPath: yypRelPath });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      projectName: string;
+      totalResources: number;
+      objectNames: string[];
+      scriptNames: string[];
+    };
+    expect(parsed.projectName).toBe('Trailing Comma Project');
+    expect(parsed.totalResources).toBe(2);
+    expect(parsed.objectNames).toEqual(['obj_player']);
+    expect(parsed.scriptNames).toEqual(['scr_init']);
+  });
+
   it('emptysock_layer_info returns an object with methods', async () => {
     const res = await dispatchTool('emptysock_layer_info', {});
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { methods: unknown };
@@ -328,7 +376,26 @@ describe('dispatchTool', () => {
       startNodeId: 'node-1',
       nodes: [
         { id: 'node-1', type: 'dialogue', x: 0, y: 0, speaker: 'Hero', text: 'Hello.' },
-        { id: 'node-2', type: 'choice', x: 100, y: 0, text: 'Pick one:', options: ['Yes', 'No'] },
+        {
+          id: 'node-2',
+          type: 'choice',
+          x: 100,
+          y: 0,
+          text: 'Pick one:',
+          options: [
+            { label: 'Yes', next: 'node-3' },
+            { label: 'No (locked)', next: 'node-4', when: { kind: 'switch', index: 1, equals: true } },
+          ],
+        },
+        {
+          id: 'node-3',
+          type: 'condition',
+          x: 200,
+          y: 0,
+          condition: { kind: 'variable', index: 2, op: 'gte', value: 10 },
+          ifTrue: 'node-1',
+          ifFalse: 'node-2',
+        },
       ],
       edges: [{ id: 'edge-1', from: 'node-1', fromPort: 0, to: 'node-2' }],
     };
@@ -343,10 +410,15 @@ describe('dispatchTool', () => {
       startNodeId: string;
     };
     expect(Array.isArray(parsed.nodes)).toBe(true);
-    expect(parsed.nodes).toHaveLength(2);
+    expect(parsed.nodes).toHaveLength(3);
     expect(Array.isArray(parsed.edges)).toBe(true);
     expect(parsed.edges).toHaveLength(1);
     expect(parsed.startNodeId).toBe('node-1');
+    const conditionNode = parsed.nodes.find((n) => (n as { id: string }).id === 'node-3') as
+      | { type: string; condition: { kind: string } }
+      | undefined;
+    expect(conditionNode?.type).toBe('condition');
+    expect(conditionNode?.condition.kind).toBe('variable');
   });
 
   it('story_graph_export returns error object for a non-existent scene', async () => {
@@ -365,6 +437,43 @@ describe('dispatchTool', () => {
   it('story_graph_export rejects a sceneId with path traversal characters', async () => {
     await expect(
       dispatchTool('story_graph_export', { sceneId: '../evil' }),
+    ).rejects.toThrow(McpError);
+  });
+
+  // --- Battle ---
+
+  it('battle_estimate_damage returns normal/crit/expected damage using the default physical formula', async () => {
+    const res = await dispatchTool('battle_estimate_damage', {
+      effectiveAttack: 50,
+      effectiveDefense: 20,
+      power: 1,
+      critChance: 0.5,
+      critMultiplier: 2,
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      normalDamage: number;
+      critDamage: number;
+      expectedDamage: number;
+    };
+    // floor((50 - 20/2) * 1 * 1) = 40
+    expect(parsed.normalDamage).toBe(40);
+    // floor((50 - 20/2) * 1 * 2) = 80
+    expect(parsed.critDamage).toBe(80);
+    expect(parsed.expectedDamage).toBeCloseTo(60, 5);
+  });
+
+  it('battle_estimate_damage floors damage at 1 even for a weak attacker', async () => {
+    const res = await dispatchTool('battle_estimate_damage', {
+      effectiveAttack: 1,
+      effectiveDefense: 100,
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { normalDamage: number };
+    expect(parsed.normalDamage).toBe(1);
+  });
+
+  it('battle_estimate_damage rejects negative stats', async () => {
+    await expect(
+      dispatchTool('battle_estimate_damage', { effectiveAttack: -5, effectiveDefense: 10 }),
     ).rejects.toThrow(McpError);
   });
 });

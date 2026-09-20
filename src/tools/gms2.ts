@@ -36,8 +36,48 @@ interface YypResource {
 
 interface YypFile {
   name?: string;
+  '%Name'?: string;
   resources?: YypResource[];
   [key: string]: unknown;
+}
+
+/**
+ * Real GameMaker Studio 2 .yyp files (and the .yy files they reference) are
+ * not strict JSON — the IDE writes a trailing comma after the last property
+ * of every object and array. `JSON.parse` rejects that outright. Strip
+ * trailing commas that appear immediately before a closing `}` or `]`,
+ * skipping over string literals (respecting `\"` escapes) so commas inside
+ * quoted values are never touched.
+ */
+function stripTrailingCommas(text: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i] ?? '';
+    out += ch;
+    if (inString) {
+      if (ch === '\\') {
+        out += text[i + 1] ?? '';
+        i++;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === ',') {
+      let j = i + 1;
+      while (j < text.length && /\s/.test(text[j] ?? '')) j++;
+      const next = text[j];
+      if (next === '}' || next === ']') {
+        out = out.slice(0, -1);
+      }
+    }
+  }
+  return out;
 }
 
 export const gms2ToolDefs = [
@@ -93,7 +133,13 @@ export async function gms2Handler(toolName: string, raw: unknown): Promise<{ con
       try {
         yyp = JSON.parse(fileContent) as YypFile;
       } catch {
-        return textResponse({ error: 'File is not valid JSON — is this a GMS2 2.3+ project?' });
+        // Real .yyp files carry GameMaker's trailing commas, which strict
+        // JSON.parse rejects. Retry after stripping them before giving up.
+        try {
+          yyp = JSON.parse(stripTrailingCommas(fileContent)) as YypFile;
+        } catch {
+          return textResponse({ error: 'File is not valid JSON (even after stripping trailing commas) — is this a GMS2 2.3+ project?' });
+        }
       }
 
       const resources: YypResource[] = Array.isArray(yyp.resources) ? yyp.resources : [];
@@ -115,7 +161,8 @@ export async function gms2Handler(toolName: string, raw: unknown): Promise<{ con
       }
 
       return textResponse({
-        projectName: yyp.name ?? path.basename(yypPath, '.yyp'),
+        // Real .yyp files store the project name under "%Name", not "name".
+        projectName: yyp['%Name'] ?? yyp.name ?? path.basename(yypPath, '.yyp'),
         yypPath,
         totalResources: resources.length,
         assetCounts: counts,
