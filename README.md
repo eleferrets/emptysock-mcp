@@ -79,7 +79,7 @@ Restart Claude Desktop and the EmptySock tools show up in the tool picker.
 
 ## What this server actually talks to (read this before assuming a tool does more than it does)
 
-There is currently no live connection between this server and a running EmptySock game. That's not an oversight, it's the current state of a real piece of engine work: `@emptysock/engine`'s `QueryChannel` (`bridge/QueryChannel.ts`) is a real, finished, transport-agnostic query interface built specifically so a server like this one can eventually ask a live game "what's at this entity" or "what does this raycast hit" and get a real answer back instead of a guess. Wiring an actual transport between that channel and this process (a socket, a `postMessage` bridge, whatever a given host needs) is deliberate follow-up work for a later pass — it is not done yet, and this pass didn't attempt it.
+There is currently no live connection between this server and a running EmptySock game. That's not an oversight, it's the current state of a real piece of engine work: `@emptysock/engine`'s `QueryChannel` (`packages/engine/src/ecs/bridge/QueryChannel.ts`) is a real, finished, transport-agnostic query interface built specifically so a server like this one can eventually ask a live game "what's at this entity" or "what does this raycast hit" and get a real answer back instead of a guess. Wiring an actual transport between that channel and this process (a socket, a `postMessage` bridge, whatever a given host needs) is deliberate follow-up work for a later pass — it is not done yet, and this pass didn't attempt it.
 
 What that means in practice, split by domain:
 
