@@ -6,13 +6,14 @@ import { notFound } from '../lib/errors.js';
 /**
  * Read-mostly inspection tool, matching the granularity of physics.ts
  * (raycast/overlap queries rather than owning a live physics world).
- * BattleSystem's public surface (start/submitAction/subscribe) is a stateful
- * turn machine meant to be driven live inside a running game — this server
- * has no live engine connection to attach to. Instead of re-implementing a
- * full round simulator (and risking drift from BattleSystem's real turn
- * order / status-effect resolution), this tool exposes the one pure,
- * stateless calculation an agent needs for balance testing: BattleSystem's
- * default physical damage formula, `DEFAULT_PHYSICAL` in BattleSystem.ts —
+ * @emptysock/battle's BattleSystem public surface (start/submitAction/subscribe)
+ * is a stateful turn machine meant to be driven live inside a running game —
+ * this server has no live engine connection to attach to. Instead of
+ * re-implementing a full round simulator (and risking drift from
+ * BattleSystem's real turn order / status-effect resolution), this tool
+ * exposes the one pure, stateless calculation an agent needs for balance
+ * testing: BattleSystem's default physical damage formula, `DEFAULT_PHYSICAL`
+ * in BattleSystem.ts —
  * `max(1, floor((effectiveAttack - effectiveDefense / 2) * power * (isCrit ? critMultiplier : 1)))`.
  */
 const EstimateDamageSchema = z.object({

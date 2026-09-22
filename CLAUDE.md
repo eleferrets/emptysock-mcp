@@ -1,6 +1,6 @@
 # emptysock-mcp — Claude Code Instructions
 
-MCP server that exposes EmptySock engine systems as tools consumable by Claude Desktop, AI agents, and the Claude API.
+An MCP server that exposes EmptySock engine systems as tools for Claude Desktop, AI agents, and the Claude API. Some tools do real work against static project files today; a few are deliberate stubs waiting on a live connection to a running game (see the bridge note below). Both kinds are documented honestly in the README's tool table — keep it that way when you touch a handler.
 
 ---
 
@@ -32,38 +32,46 @@ src/
 
 ---
 
+## The live bridge: real on the engine side, not connected here yet
+
+`@emptysock/engine` now has a real, finished query bridge for exactly this purpose: `v2/bridge/QueryChannel.ts` (see that repo's `CLAUDE.md`, "QueryChannel: transport-agnostic, and errors instead of fabricated empty results"). It's a plain synchronous `handle(query)` function that never imports a transport — the same "engine defines the interface, whoever has a live instance wires the actual pipe" pattern the engine uses for `Transport` and `StorageAdapter` elsewhere. It also draws a careful three-way distinction between "queried and found nothing" (`{ ok: true, data: null }` / `{ ok: true, data: [] }`), "there's no live instance to even ask" (`ok: false, "no-live-instance"`), and "there's a scene but its physics world was never initialized" (`ok: false, "no-physics-world"`).
+
+That means the engine-side half of "give this MCP server real physics and scene answers" is done and ready to be connected to. What's still missing, and is explicitly **not** this repo's job to build without being asked, is the actual transport: something that takes a query from a tool handler here, gets it to a `QueryChannel.handle()` running inside a live game process, and relays the answer back. Until that transport exists, `physics_*`, `scene_*`, `navmesh_*`, and `actor_*` stay honest stubs — they validate input for real and return a fixed placeholder shape, never a stack trace and never a fabricated answer dressed up as a real one. If you're the one picking up that follow-up work: read the `QueryChannel` doc comment in the engine repo first, since it defines the exact three-state result shape (empty vs. no-instance vs. no-physics-world) your relay needs to preserve rather than collapsing into one generic "empty" case.
+
+---
+
 ## Absolute rules
 
 ### Environment variables
-- **Always** read env vars from `src/env.ts`. Never call `process.env['VAR']` directly inside a tool or lib file.
-- Adding a new env var: add it to the `env` object in `env.ts` AND document it in `.env.example`.
+- **Always** read env vars through `src/env.ts`. Never call `process.env['VAR']` directly from a tool or lib file — `env.ts` is the one place that's allowed to know the variable names.
+- Adding a new env var: add it to the `env` object in `env.ts` *and* document it in `.env.example`. One without the other is a bug waiting to be filed.
 
 ### Path safety
-- User-supplied filesystem paths **must** be validated with `SafeRelPath` (Zod schema in `validate.ts`).
-- After resolving with `path.resolve(env.saveBaseDir, userPath)`, assert containment: the resolved path must start with `path.resolve(env.saveBaseDir)`.
-- Never use `path.resolve(userPath)` alone — that allows absolute paths to escape the base directory.
+- Any filesystem path a caller supplies **must** go through `SafeRelPath` (the Zod schema in `validate.ts`) before it touches anything else.
+- After resolving with `path.resolve(env.saveBaseDir, userPath)` (or the equivalent base for asset paths), assert containment: the resolved path has to start with `path.resolve(env.saveBaseDir)`. Trust the schema, then check again anyway.
+- Never call `path.resolve(userPath)` on its own — that's exactly the shape of bug that lets an absolute path walk right out of the sandbox.
 
 ### Adding a new tool
 1. Create or extend the appropriate file under `src/tools/`.
 2. Export `<domain>ToolDefs` (the MCP schema array) and `<domain>Handler` (the async dispatch function).
 3. Register both in `src/tools/index.ts` via `register(...)`.
-4. Add Zod schemas in the tool file (not in `validate.ts` unless the shape is reused across tools).
+4. Add Zod schemas in the tool file itself (only promote a shape to `validate.ts` once it's actually reused across tools).
 5. Add a test in `src/tests/tools.test.ts`.
-6. Document the tool in `README.md` under **Available tools**.
+6. Document the tool in `README.md` under **Available tools** — including its real status (working / stub / docs). A stub that reads like a finished feature in the README is worse than no README entry at all.
 
 ### Error handling
-- Use `invalidParams(message)` for bad input (throws `McpError(InvalidParams)`).
-- Use `wrapError(err)` in catch blocks (re-throws McpError, wraps anything else).
-- Never `throw new Error(...)` from a handler — always use the helpers in `lib/errors.ts`.
-- Handlers that do I/O should `try/catch` and return `textResponse({ error: ... })` for user-recoverable failures (file not found, bad JSON) rather than throwing.
+- Use `invalidParams(message)` for bad input — it throws `McpError(InvalidParams)`.
+- Use `wrapError(err)` in catch blocks — it re-throws an existing `McpError` as-is and wraps anything else.
+- Never `throw new Error(...)` from a handler. Always go through the helpers in `lib/errors.ts`.
+- Handlers doing I/O should `try/catch` and return `textResponse({ error: ... })` for the recoverable stuff (file not found, bad JSON) rather than throwing. Save that for genuinely exceptional failures.
 
 ### Security
-- All file I/O is restricted to `env.saveBaseDir`. The `gms2_inspect_project` tool inherits the same restriction.
-- The rate limiter (`defaultLimiter`) is applied per tool name in `server.ts` before dispatch.
-- Audit entries go to **stderr only** — stdout is the MCP wire protocol; mixing them corrupts the stream.
+- All file I/O is restricted to `env.saveBaseDir` (or `env.assetBaseDir` for the asset-reading tools). `gms2_inspect_project` inherits the same restriction.
+- The rate limiter (`defaultLimiter`) sits in front of every tool call by name, before dispatch, in `server.ts`.
+- Audit entries go to **stderr only**. stdout is the live MCP wire protocol — anything else written there corrupts every message that follows it.
 
 ### TypeScript
-- Zero `any`. Use `unknown` + Zod or explicit type guards.
+- Zero `any`. Use `unknown` plus Zod, or an explicit type guard.
 - Zero `!` non-null assertions.
 - Every exported function needs an explicit return type.
 
@@ -80,4 +88,4 @@ npm run lint    # tsc --noEmit
 
 ## Commits
 
-Conventional Commits: `feat(tools): ...`, `fix(save): ...`, `chore(deps): ...`
+Conventional Commits: `feat(tools): ...`, `fix(save): ...`, `chore(deps): ...`, `docs(...)` for documentation-only passes like this one.

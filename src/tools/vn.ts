@@ -12,8 +12,10 @@ const StoryGraphExportSchema = z.object({
 });
 
 /**
- * Mirrors VariableCondition from @emptysock/engine's VariableStore. Gates
- * `condition` nodes and, via `optionWhens`, individual choice options.
+ * Mirrors VariableCondition from @emptysock/engine's VariableStore (the
+ * store @emptysock/vn's VNSystem defaults to — see that repo's CLAUDE.md,
+ * "VNSystem defaults to the engine's global variableStore singleton").
+ * Gates `condition` nodes and, via `optionWhens`, individual choice options.
  */
 const VariableConditionSchema = z.union([
   z.object({ kind: z.literal('switch'), index: z.number().int(), equals: z.boolean() }),
@@ -26,7 +28,7 @@ const VariableConditionSchema = z.union([
 ]);
 
 /**
- * Mirrors StoryGraphNode from @emptysock/engine's VNScriptConvert.ts — the
+ * Mirrors StoryGraphNode from @emptysock/vn's VNScriptConvert.ts — the
  * visual-editor representation persisted as .storyGraph.json. Note this is
  * NOT the same shape as a VNSystem DialogueNode: choice options are plain
  * label strings (the `next` target lives on the edge, keyed by fromPort),

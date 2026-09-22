@@ -18,7 +18,7 @@ export const navmeshToolDefs = [
   {
     name: 'navmesh_find_path',
     description:
-      'Find an A* path between two 2D points on a loaded navmesh. Returns an ordered array of waypoints or an empty array if no path exists.',
+      'Find an A* path between two 2D points on a loaded navmesh (@emptysock/tilemap\'s NavMeshSystem). Returns an ordered array of waypoints or an empty array if no path exists. Currently a stub pending a live engine connection — see this server\'s CLAUDE.md.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -47,8 +47,11 @@ export async function navmeshHandler(toolName: string, raw: unknown): Promise<{ 
   switch (toolName) {
     case 'navmesh_find_path': {
       const { from, to, mapId } = parse(FindPathSchema, raw);
-      // Placeholder: real implementation calls NavMeshSystem.findPath()
-      // loaded from the engine package. This returns a stub for schema demonstration.
+      // Stub: a real implementation would call @emptysock/tilemap's
+      // NavMeshSystem.findPath() against a live loaded navmesh, once this
+      // server has a transport wired up to the engine's QueryChannel bridge
+      // (see CLAUDE.md). Until then this is a fabricated straight-line path
+      // for schema demonstration only, not a real pathfinding result.
       const path: Array<{ x: number; y: number }> = [
         from,
         { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },

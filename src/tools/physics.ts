@@ -52,7 +52,7 @@ export const physicsToolDefs = [
   {
     name: 'physics_body_state',
     description:
-      'Return the current position, velocity, angular velocity, and PhysicsBody state (bodyHandle, colliderHandle, isSensor) of a physics body by entity ID. bodyHandle and colliderHandle are the Rapier handles assigned when a PhysicsSystem registers the entity, null until then; this server has no live connection to observe that.',
+      'Return the current position, velocity, angular velocity, and PhysicsBody state (bodyHandle, colliderHandle, isSensor) of a physics body by entity ID. bodyHandle and colliderHandle are the Rapier handles assigned when a PhysicsSystem registers the entity, null until then; this server has no live connection to observe that (see CLAUDE.md\'s note on the engine\'s QueryChannel bridge).',
     inputSchema: {
       type: 'object',
       properties: {
