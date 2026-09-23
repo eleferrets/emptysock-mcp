@@ -10,6 +10,7 @@ import {
 import { listTools, dispatchTool } from './tools/index.js';
 import { audit } from './lib/audit.js';
 import { defaultLimiter } from './lib/ratelimit.js';
+import { bridge } from './lib/bridge.js';
 
 const server = new Server(
   { name: 'emptysock-mcp', version: '0.1.0' },
@@ -41,9 +42,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
 });
 
-// Graceful shutdown — give the transport a chance to flush before exit.
+// Graceful shutdown — give the transport (and the live bridge) a chance to
+// flush before exit.
 async function shutdown(reason: string): Promise<void> {
   audit({ kind: 'server_stop', reason });
+  try {
+    await bridge.stop();
+  } catch {
+    // Ignore errors during shutdown.
+  }
   try {
     await server.close();
   } catch {
@@ -60,6 +67,10 @@ process.on('unhandledRejection', (reason) => {
   console.error('[emptysock-mcp] unhandledRejection:', reason);
   void shutdown('unhandledRejection');
 });
+
+// The live bridge (WebSocket server on 127.0.0.1:EMPTYSOCK_BRIDGE_PORT) runs
+// alongside the stdio MCP transport — see lib/bridge.ts.
+bridge.start();
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

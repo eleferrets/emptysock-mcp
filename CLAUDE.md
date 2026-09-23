@@ -12,6 +12,8 @@ src/
   env.ts             Single source of truth for all env vars (never read process.env directly elsewhere)
   lib/
     audit.ts         Structured JSON audit log → stderr only
+    bridge.ts        Live bridge — WebSocket server + queryLiveGame() (see "The live bridge" below)
+    bridgeTypes.ts   EngineQuery/EngineQueryResult wire types, mirrored from `@emptysock/engine`'s QueryChannel
     errors.ts        McpError factory helpers (wrapError, invalidParams, notFound)
     ratelimit.ts     Sliding-window rate limiter (uses env.rateLimitMax / env.rateLimitWindowMs)
     response.ts      textResponse() — standard MCP tool content wrapper
@@ -32,11 +34,17 @@ src/
 
 ---
 
-## The live bridge: real on the engine side, not connected here yet
+## The live bridge: built, and why it's a bare WebSocket with no auth
 
-`@emptysock/engine` now has a real, finished query bridge for exactly this purpose: `packages/engine/src/ecs/bridge/QueryChannel.ts` (see that repo's `CLAUDE.md`, "QueryChannel: transport-agnostic, and errors instead of fabricated empty results"). It's a plain synchronous `handle(query)` function that never imports a transport — the same "engine defines the interface, whoever has a live instance wires the actual pipe" pattern the engine uses for `Transport` and `StorageAdapter` elsewhere. It also draws a careful three-way distinction between "queried and found nothing" (`{ ok: true, data: null }` / `{ ok: true, data: [] }`), "there's no live instance to even ask" (`ok: false, "no-live-instance"`), and "there's a scene but its physics world was never initialized" (`ok: false, "no-physics-world"`).
+`@emptysock/engine`'s query bridge (`packages/engine/src/bridge/QueryChannel.ts`, see that repo's `CLAUDE.md`) is a plain synchronous `handle(query)` function that never imports a transport — "engine defines the interface, whoever has a live instance wires the actual pipe," the same pattern as `Transport`/`StorageAdapter`. `lib/bridge.ts` is that pipe: this process hosts a `ws` `WebSocketServer` bound to `127.0.0.1:EMPTYSOCK_BRIDGE_PORT` (default `7777`), and a live game/IDE preview dials in as the client. No auth token — a deliberate localhost-only trust model, the same one this server already extends to local file I/O; don't add one without the project owner asking.
 
-That means the engine-side half of "give this MCP server real physics and scene answers" is done and ready to be connected to. What's still missing, and is explicitly **not** this repo's job to build without being asked, is the actual transport: something that takes a query from a tool handler here, gets it to a `QueryChannel.handle()` running inside a live game process, and relays the answer back. Until that transport exists, `physics_*`, `scene_*`, `navmesh_*`, and `actor_*` stay honest stubs — they validate input for real and return a fixed placeholder shape, never a stack trace and never a fabricated answer dressed up as a real one. If you're the one picking up that follow-up work: read the `QueryChannel` doc comment in the engine repo first, since it defines the exact three-state result shape (empty vs. no-instance vs. no-physics-world) your relay needs to preserve rather than collapsing into one generic "empty" case.
+Wire envelope (JSON text frames): server→client is `{ id, query: EngineQuery }`, client→server is `{ id, result: EngineQueryResult<T> }`, with `id` round-tripped to match responses to in-flight requests (`lib/bridge.ts`'s `pending` map). `EngineQuery`/`EngineQueryResult` are hand-mirrored in `lib/bridgeTypes.ts` rather than imported from a real `@emptysock/engine` dependency — that package is `private: true` with native/WASM deps (Rapier, pixi.js) and isn't published anywhere this server can install from. If it ever is, replace `bridgeTypes.ts` with a real `import type` and delete the mirror; until then, any change to `QueryChannel`'s query/result shapes has to be mirrored here by hand.
+
+`QueryChannel` draws a careful three-way distinction — "queried and found nothing" (`{ ok: true, data: null }` / `{ ok: true, data: [] }`), "no live instance to even ask" (`no-live-instance`), "scene attached but no physics world" (`no-physics-world`) — and `physics_*`/`scene_*` preserve it exactly rather than collapsing any of the three into "empty." A query the connected client never answers within 5 seconds (`QUERY_TIMEOUT_MS` in `lib/bridge.ts`) also resolves `no-live-instance`, never a fabricated empty result — a stalled reply and "nothing to ask" both mean the caller can't trust an answer, so they get the same honest error.
+
+`QueryChannel` itself has no navmesh or `ActorSystem` query kind — only `listEntities`/`entityInfo`/`getComponent`/`setComponent` plus the three physics kinds. `navmesh_*`/`actor_*` therefore still can't relay real data even with a live game connected; they report `no-live-instance` or `not-found` (naming the missing query kind) rather than fabricating a path or an "enqueued: true". Adding those query kinds is engine-side work (`QueryChannel.ts`), not something to fake around here.
+
+`scene_create_entity` has the same shape of gap: `QueryChannel` is deliberately read/patch only (no entity-creation query kind), so it always returns `ok: false`/`not-found` — don't wire it to `setComponent` or any other existing kind as a workaround, since neither actually creates a live entity.
 
 ---
 

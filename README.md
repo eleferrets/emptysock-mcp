@@ -38,6 +38,7 @@ cp .env.example .env
 | `ASSET_BASE_DIR` | No | The directory project asset files live under. `story_graph_export` and `gms2_inspect_project` both resolve their paths from here. Same story: defaults to cwd, set it explicitly once this is running somewhere real. |
 | `RATE_LIMIT_MAX` | No | How many calls a single tool can take in one rate-limit window before it starts saying no. Default `60`. This exists mostly so an agent stuck in a retry loop doesn't hammer the process forever. |
 | `RATE_LIMIT_WINDOW_MS` | No | The length of that window, in milliseconds. Default `60000` (one minute). |
+| `EMPTYSOCK_BRIDGE_PORT` | No | Port the live-bridge WebSocket server binds to on `127.0.0.1`. A live game or the IDE preview dials in as the client so physics_*/scene_*/navmesh_*/actor_* tools can relay real queries to it. Default `7777`. |
 
 > **Never commit `.env`.** It's gitignored for a reason — keep secrets in your CI/CD secret manager instead.
 
@@ -79,12 +80,12 @@ Restart Claude Desktop and the EmptySock tools show up in the tool picker.
 
 ## What this server actually talks to (read this before assuming a tool does more than it does)
 
-There is currently no live connection between this server and a running EmptySock game. That's not an oversight, it's the current state of a real piece of engine work: `@emptysock/engine`'s `QueryChannel` (`packages/engine/src/ecs/bridge/QueryChannel.ts`) is a real, finished, transport-agnostic query interface built specifically so a server like this one can eventually ask a live game "what's at this entity" or "what does this raycast hit" and get a real answer back instead of a guess. Wiring an actual transport between that channel and this process (a socket, a `postMessage` bridge, whatever a given host needs) is deliberate follow-up work for a later pass — it is not done yet, and this pass didn't attempt it.
+This server hosts a plain WebSocket bridge on `127.0.0.1:EMPTYSOCK_BRIDGE_PORT` (default `7777`, see `lib/bridge.ts`) that a live game or the IDE preview dials into as the client. Once connected, tool calls relay real `EngineQuery`/`EngineQueryResult` envelopes to `@emptysock/engine`'s `QueryChannel` (`packages/engine/src/bridge/QueryChannel.ts`) running inside that live process and return its real answer — not a guess. No auth token: this is a localhost-only trust model, matching how this server already treats local file I/O. Only one live game is expected connected at a time; a newer connection replaces an older one rather than being queued.
 
 What that means in practice, split by domain:
 
-- **Physics and Scene tools** (`physics_*`, `scene_*`) are honest stubs today. They validate your input correctly and return a fixed, empty-ish shape — not because the tool is broken, but because there's no live game for it to ask. See the tool tables below for exactly what each one currently returns.
-- **NavMesh and Actor tools** (`navmesh_*`, `actor_*`) are also stubs for the same reason — there's no live `ActorSystem` or `NavMeshSystem` instance to reach into.
+- **Physics and Scene tools** (`physics_*`, `scene_*`) are live: they relay real queries to the connected live game's `QueryChannel` and return its real answer. With no live game connected, they return `{ ok: false, error: { code: "no-live-instance", ... } }` (or `"no-physics-world"` for a physics query against a scene with no initialized `PhysicsSystem`) — an honest error, never fabricated data. `scene_create_entity` is the one exception: `QueryChannel` has no entity-creation query kind (it's deliberately read/patch only), so it always returns `ok: false`/`not-found`.
+- **NavMesh and Actor tools** (`navmesh_*`, `actor_*`) still can't do real work even with the bridge connected: `QueryChannel` has no navmesh or `ActorSystem` query kind yet (only `listEntities`/`entityInfo`/`getComponent`/`setComponent` plus the three physics kinds). They check whether a live game is connected and report the honest reason either way — `no-live-instance` with nothing connected, `not-found` (naming the missing query kind) with a game connected — never a fabricated path or a fake "enqueued: true".
 - **Save, GMS2 import, Story Graph export, and VisualScript validation** are all real, working tools that operate on static project files on disk (save JSON, `.yyp`/`.yy` files, `.storyGraph.json` files, a `VisualScriptGraph` payload you hand it directly). No live game required, because none of these ever needed one.
 - **Battle damage estimation** is a real, working, pure calculation — it reimplements `BattleSystem`'s default physical damage formula rather than driving a live `BattleSystem` instance, because that instance is a stateful turn machine meant to run inside a real game loop, not something this server has any business owning.
 - **`emptysock_layer_info`** is reference documentation served as a tool response, not a stub — there's nothing to fake here, it's just handing back API docs.
@@ -103,16 +104,16 @@ One more note on terminology: the engine's recent module-package split moved VN,
 
 ## Available tools
 
-Status key: **live** — does real work, no live game needed. **stub** — validates input correctly, returns a fixed placeholder shape, waiting on the `QueryChannel` bridge described above. **docs** — returns static reference information by design, not a stub.
+Status key: **live** — does real work (either standalone, or by relaying to a connected live game over the bridge). **stub** — validates input correctly but has no live-bridge query kind to call yet, so it always returns an honest `ok: false` error. **docs** — returns static reference information by design, not a stub.
 
 ### NavMesh
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `navmesh_find_path` | stub | `from: Vec2` (required), `to: Vec2` (required), `mapId: string` (required) | `{ mapId, path }` — currently a fabricated 3-point path (`from`, the midpoint, `to`), not a real A* result off any loaded navmesh. |
-| `navmesh_nearest_node` | stub | `mapId: string` (required), `point: Vec2` (required) | `{ mapId, nearestNode }` — currently just echoes `point` back unchanged. |
+| `navmesh_find_path` | stub | `from: Vec2` (required), `to: Vec2` (required), `mapId: string` (required) | `{ mapId, from, to, error }` — `QueryChannel` has no navmesh query kind, so this always returns an error (`no-live-instance` or `not-found`), never a fabricated path. |
+| `navmesh_nearest_node` | stub | `mapId: string` (required), `point: Vec2` (required) | `{ mapId, point, error }` — same limitation, always an error. |
 
-`@emptysock/tilemap`'s `NavMeshSystem` is where a real path or nearest-node query would eventually come from, once there's a live instance to query. Right now there isn't one, so treat these two as schema demonstrations rather than usable pathfinding.
+`@emptysock/tilemap`'s `NavMeshSystem` is where a real path or nearest-node query would eventually come from — but `QueryChannel` (the bridge target) has no navmesh query kind to relay through yet, even with a live game connected. Treat these two as schema demonstrations rather than usable pathfinding until the engine side grows one.
 
 **Example call — find path:**
 ```json
@@ -125,9 +126,9 @@ Status key: **live** — does real work, no live game needed. **stub** — valid
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `physics_raycast_2d` | stub | `origin: Vec2`, `direction: Vec2`, `maxDistance: number > 0` (all required); `layerMask: number` (optional) | `{ hit: null, args }` — always reports no hit. There is no 2D physics world attached to check against. |
-| `physics_overlap_circle` | stub | `center: Vec2`, `radius: number > 0, ≤ 100000` (required); `layerMask: number` (optional) | `{ entities: [], args }` — always reports an empty overlap set. |
-| `physics_body_state` | stub | `entityId: string` (required) | `{ entityId, position: null, velocity: null, angularVelocity: null, bodyHandle: null, colliderHandle: null, isSensor: null }` — every field is `null` because there's no live `PhysicsSystem` registering handles for this entity yet. |
+| `physics_raycast_2d` | live | `origin: Vec2`, `direction: Vec2`, `maxDistance: number > 0` (all required); `layerMask: number` (optional) | `{ hit, args }` on success (`hit` is the real raycast result, or `null` for a genuine clear line of sight); `{ error, args }` when no live game is connected. |
+| `physics_overlap_circle` | live | `center: Vec2`, `radius: number > 0, ≤ 100000` (required); `layerMask: number` (optional) | `{ entities, args }` — the real overlapping entity ids (possibly empty); `{ error, args }` when no live game is connected. |
+| `physics_body_state` | live | `entityId: string` (numeric string, required) | `{ entityId, position, rotation, velocity, type, isSensor }` from the live `PhysicsBody`; `{ entityId, error }` when no live game is connected, the scene has no `PhysicsSystem`, or `entityId` isn't a live numeric id. |
 
 There's no `physics_raycast_3d` tool in this registry. 3D raycasting isn't offered at all right now, not even as a stub — implementing it needs a Rapier3D WASM build available server-side, which this server doesn't have (the engine's 3D physics runs in the browser's WASM context, not in Node). Don't call it expecting an error message with useful detail; you'll just get an unknown-tool error like any other made-up tool name.
 
@@ -142,10 +143,10 @@ There's no `physics_raycast_3d` tool in this registry. 3D raycasting isn't offer
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `scene_list_entities` | stub | `sceneId: string` (required) | `{ sceneId, entities: [] }` — always empty. |
-| `scene_entity_info` | stub | `sceneId: string`, `entityId: string` (both required) | `{ sceneId, entityId, tag: null, active: true, components: [] }` — fixed placeholder, not a real lookup. |
-| `scene_get_component` | stub | `sceneId: string`, `entityId: string`, `componentType: string` (PascalCase class name, all required) | `{ sceneId, entityId, componentType, data: null }` — always `null`. |
-| `scene_create_entity` | stub | `sceneId: string` (required); `tag: string`, `components: string[]` (optional) | `{ sceneId, entityId, tag, components }` — `entityId` is a locally-generated placeholder (`entity-<timestamp>`), not an ID handed out by a real `Scene`. Calling this does not create anything in an actual game. |
+| `scene_list_entities` | live | `sceneId: string` (required) | `{ sceneId, entities }` — every live entity's `EntitySummary` (components, and `Meta`/`Transform` fields when present); `{ sceneId, error }` when no live game is connected. |
+| `scene_entity_info` | live | `sceneId: string`, `entityId: string` (numeric string, both required) | `{ sceneId, entityId, components, name?, tags?, active?, x?, y?, rotation? }`; `{ sceneId, entityId, error }` when not found, no live game, or `entityId` isn't numeric. |
+| `scene_get_component` | live | `sceneId: string`, `entityId: string` (numeric string), `componentType: string` (PascalCase class name, all required) | `{ sceneId, entityId, componentType, data }` — the component's real live field values; `{ ..., error }` on failure. |
+| `scene_create_entity` | stub | `sceneId: string` (required); `tag: string`, `components: string[]` (optional) | `{ sceneId, tag, components, error }` — `QueryChannel` has no entity-creation query kind (deliberately read/patch only), so this always returns an error and never creates anything. |
 
 **Example call — get component:**
 ```json
@@ -180,12 +181,12 @@ Slot names are alphanumeric plus dashes/underscores only (`slot1`, `autosave`, `
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `actor_send_message` | stub | `actorId: string`, `message: { type: string, payload?: unknown }` (both required) | `{ actorId, enqueued: true, message }` — reports success without actually enqueueing anything in a real `ActorSystem` inbox. |
-| `actor_broadcast` | stub | `message: { type: string, payload?: unknown }` (required) | `{ broadcast: true, message }` — same story, no live actors to reach. |
-| `actor_inbox_size` | stub | `actorId: string` (required) | `{ actorId, inboxSize: 0 }` — always zero. |
-| `actor_list` | stub | none | `{ actors: [] }` — always empty. |
+| `actor_send_message` | stub | `actorId: string`, `message: { type: string, payload?: unknown }` (both required) | `{ actorId, message, error }` — `QueryChannel` has no `ActorSystem` query kind, so this always returns an error, never a fake `enqueued: true`. |
+| `actor_broadcast` | stub | `message: { type: string, payload?: unknown }` (required) | `{ message, error }` — same limitation. |
+| `actor_inbox_size` | stub | `actorId: string` (required) | `{ actorId, error }` — same limitation. |
+| `actor_list` | stub | none | `{ error }` — same limitation. |
 
-Once these are wired to a live game, the same ordering guarantee `ActorSystem` uses everywhere else applies: it drains every actor's inbox before calling `update()` on any actor, so a message sent during frame N is fully processed before frame N's `update()` logic runs.
+The live bridge itself is wired up (see "What this server actually talks to" above) — what's still missing is an `ActorSystem` query kind on the engine's `QueryChannel` for these four tools to call through it. Once that lands, the same ordering guarantee `ActorSystem` uses everywhere else applies: it drains every actor's inbox before calling `update()` on any actor, so a message sent during frame N is fully processed before frame N's `update()` logic runs.
 
 **Example call — send message:**
 ```json

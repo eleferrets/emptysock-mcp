@@ -41,16 +41,16 @@ describe('dispatchTool', () => {
     await expect(dispatchTool('does_not_exist', {})).rejects.toThrow(McpError);
   });
 
-  // --- NavMesh ---
+  // --- NavMesh (QueryChannel has no navmesh query kind yet — see navmesh.ts) ---
 
-  it('navmesh_find_path returns a path array', async () => {
+  it('navmesh_find_path returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('navmesh_find_path', {
       from: { x: 0, y: 0 },
       to: { x: 10, y: 10 },
       mapId: 'level1',
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { path: unknown[] };
-    expect(Array.isArray(parsed.path)).toBe(true);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: { code: string } };
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
   it('navmesh_find_path rejects invalid input', async () => {
@@ -59,37 +59,35 @@ describe('dispatchTool', () => {
     ).rejects.toThrow(McpError);
   });
 
-  it('navmesh_nearest_node returns nearestNode', async () => {
+  it('navmesh_nearest_node returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('navmesh_nearest_node', {
       mapId: 'level1',
       point: { x: 5, y: 10 },
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { mapId: string; nearestNode: { x: number; y: number } };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { mapId: string; error: { code: string } };
     expect(parsed.mapId).toBe('level1');
-    expect(parsed.nearestNode).toBeDefined();
-    expect(parsed.nearestNode.x).toBe(5);
-    expect(parsed.nearestNode.y).toBe(10);
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
   // --- Physics ---
 
-  it('physics_overlap_circle returns entities array', async () => {
+  it('physics_overlap_circle returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('physics_overlap_circle', {
       center: { x: 5, y: 5 },
       radius: 10,
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { entities: unknown[] };
-    expect(Array.isArray(parsed.entities)).toBe(true);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: { code: string } };
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  it('physics_raycast_2d returns hit and args', async () => {
+  it('physics_raycast_2d returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('physics_raycast_2d', {
       origin: { x: 0, y: 0 },
       direction: { x: 1, y: 0 },
       maxDistance: 100,
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { hit: null; args: { maxDistance: number } };
-    expect(parsed.hit).toBeNull();
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: { code: string }; args: { maxDistance: number } };
+    expect(parsed.error.code).toBe('no-live-instance');
     expect(parsed.args.maxDistance).toBe(100);
   });
 
@@ -97,31 +95,36 @@ describe('dispatchTool', () => {
     await expect(dispatchTool('physics_raycast_3d', {})).rejects.toThrow();
   });
 
-  it('physics_body_state returns entityId, null position, and null PhysicsBody handles', async () => {
+  it('physics_body_state returns ok:false/no-live-instance for a numeric entity id with no bridge connection', async () => {
+    const res = await dispatchTool('physics_body_state', { entityId: '1' });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
+      entityId: string;
+      error: { code: string };
+    };
+    expect(parsed.entityId).toBe('1');
+    expect(parsed.error.code).toBe('no-live-instance');
+  });
+
+  it('physics_body_state returns not-found for a non-numeric entity id', async () => {
     const res = await dispatchTool('physics_body_state', { entityId: 'body-001' });
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
       entityId: string;
-      position: null;
-      bodyHandle: null;
-      colliderHandle: null;
-      isSensor: null;
+      error: { code: string };
     };
     expect(parsed.entityId).toBe('body-001');
-    expect(parsed.position).toBeNull();
-    expect(parsed.bodyHandle).toBeNull();
-    expect(parsed.colliderHandle).toBeNull();
-    expect(parsed.isSensor).toBeNull();
+    expect(parsed.error.code).toBe('not-found');
   });
 
   // --- Scene ---
 
-  it('scene_list_entities returns entities for a sceneId', async () => {
+  it('scene_list_entities returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('scene_list_entities', { sceneId: 'main-menu' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { sceneId: string };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { sceneId: string; error: { code: string } };
     expect(parsed.sceneId).toBe('main-menu');
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  it('scene_entity_info returns tag, active, and components', async () => {
+  it('scene_entity_info returns not-found for a non-numeric entity id', async () => {
     const res = await dispatchTool('scene_entity_info', {
       sceneId: 'level1',
       entityId: 'player-001',
@@ -129,44 +132,44 @@ describe('dispatchTool', () => {
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
       sceneId: string;
       entityId: string;
-      active: boolean;
-      components: unknown[];
+      error: { code: string };
     };
     expect(parsed.sceneId).toBe('level1');
     expect(parsed.entityId).toBe('player-001');
-    expect(parsed.active).toBe(true);
-    expect(Array.isArray(parsed.components)).toBe(true);
+    expect(parsed.error.code).toBe('not-found');
   });
 
-  it('scene_get_component returns componentType and entityId', async () => {
+  it('scene_get_component returns ok:false/no-live-instance for a numeric entity id with no bridge connection', async () => {
     const res = await dispatchTool('scene_get_component', {
       sceneId: 'level1',
-      entityId: 'player-001',
+      entityId: '1',
       componentType: 'Transform',
     });
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
       sceneId: string;
       entityId: string;
       componentType: string;
+      error: { code: string };
     };
     expect(parsed.componentType).toBe('Transform');
-    expect(parsed.entityId).toBe('player-001');
+    expect(parsed.entityId).toBe('1');
     expect(parsed.sceneId).toBe('level1');
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  it('scene_create_entity returns an entityId string', async () => {
+  it('scene_create_entity has no live-bridge query kind and returns ok:false/not-found', async () => {
     const res = await dispatchTool('scene_create_entity', { sceneId: 'level1', tag: 'enemy' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { entityId: string };
-    expect(typeof parsed.entityId).toBe('string');
-    expect(parsed.entityId.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { sceneId: string; error: { code: string } };
+    expect(parsed.sceneId).toBe('level1');
+    expect(parsed.error.code).toBe('not-found');
   });
 
-  // --- Actor ---
+  // --- Actor (QueryChannel has no ActorSystem query kind yet — see actor.ts) ---
 
-  it('actor_broadcast returns broadcast=true', async () => {
+  it('actor_broadcast returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('actor_broadcast', { message: { type: 'GAME_START' } });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { broadcast: boolean };
-    expect(parsed.broadcast).toBe(true);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: { code: string } };
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
   it('actor_send_message rejects shell metacharacters in actorId', async () => {
@@ -175,27 +178,27 @@ describe('dispatchTool', () => {
     ).rejects.toThrow(McpError);
   });
 
-  it('actor_send_message returns enqueued=true with valid input', async () => {
+  it('actor_send_message returns ok:false/no-live-instance with valid input and no bridge connection', async () => {
     const res = await dispatchTool('actor_send_message', {
       actorId: 'enemy-spawner',
       message: { type: 'SPAWN_WAVE', payload: { wave: 3 } },
     });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actorId: string; enqueued: boolean };
-    expect(parsed.enqueued).toBe(true);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actorId: string; error: { code: string } };
+    expect(parsed.error.code).toBe('no-live-instance');
     expect(parsed.actorId).toBe('enemy-spawner');
   });
 
-  it('actor_inbox_size returns inboxSize as a number', async () => {
+  it('actor_inbox_size returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('actor_inbox_size', { actorId: 'enemy-001' });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actorId: string; inboxSize: number };
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actorId: string; error: { code: string } };
     expect(parsed.actorId).toBe('enemy-001');
-    expect(typeof parsed.inboxSize).toBe('number');
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  it('actor_list returns an actors array', async () => {
+  it('actor_list returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('actor_list', {});
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { actors: unknown[] };
-    expect(Array.isArray(parsed.actors)).toBe(true);
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { error: { code: string } };
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
   // --- Save ---

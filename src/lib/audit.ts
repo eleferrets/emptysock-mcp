@@ -7,7 +7,9 @@
 export type AuditEvent =
   | { kind: 'tool_call';   tool: string; status: 'ok' | 'error'; durationMs: number; error?: string }
   | { kind: 'server_start' }
-  | { kind: 'server_stop';  reason: string };
+  | { kind: 'server_stop';  reason: string }
+  | { kind: 'bridge_start'; port: number }
+  | { kind: 'bridge_connection'; event: 'connected' | 'disconnected' | 'error'; error?: string };
 
 export function audit(event: AuditEvent): void {
   const entry = { ts: new Date().toISOString(), ...event };

@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
+import { queryLiveGame } from '../lib/bridge.js';
+import type { EntitySummary } from '../lib/bridgeTypes.js';
 
 const SceneIdSchema = z.object({ sceneId: SafeId });
 
@@ -25,7 +27,8 @@ const CreateEntitySchema = z.object({
 export const sceneToolDefs = [
   {
     name: 'scene_create_entity',
-    description: 'Add a new entity to a scene. Returns the new entity\'s ID.',
+    description:
+      'Add a new entity to a scene. Not supported over the live bridge (QueryChannel is read/patch only, with no entity-creation query kind) — always returns ok:false/not-found.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,7 +41,7 @@ export const sceneToolDefs = [
   },
   {
     name: 'scene_list_entities',
-    description: 'List all entity IDs currently active in a scene.',
+    description: 'List all entities currently active in the connected live game\'s current scene, with their component names. Returns ok:false/no-live-instance if no live game is connected.',
     inputSchema: {
       type: 'object',
       properties: { sceneId: { type: 'string' } },
@@ -47,7 +50,7 @@ export const sceneToolDefs = [
   },
   {
     name: 'scene_entity_info',
-    description: 'Return the tag, active state, and component list for a specific entity.',
+    description: 'Return the component list and Meta/Transform fields (name, tags, active, x, y, rotation) for a specific live entity. Returns ok:false/no-live-instance if no live game is connected.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -59,7 +62,7 @@ export const sceneToolDefs = [
   },
   {
     name: 'scene_get_component',
-    description: 'Retrieve the serialised state of a specific component on an entity.',
+    description: 'Retrieve the live serialised state of a specific component on a live entity. Returns ok:false/no-live-instance if no live game is connected.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -72,24 +75,68 @@ export const sceneToolDefs = [
   },
 ] as const;
 
+/** See physics.ts's identically-named helper — the bridge/engine side uses numeric entity ids. */
+function toNumericEntityId(entityId: string): number | null {
+  if (!/^\d+$/.test(entityId)) return null;
+  const n = Number(entityId);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
 export async function sceneHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'scene_list_entities': {
       const { sceneId } = parse(SceneIdSchema, raw);
-      return textResponse({ sceneId, entities: [] });
+      const result = await queryLiveGame({ kind: 'listEntities' });
+      if (!result.ok) return textResponse({ sceneId, error: result.error });
+      return textResponse({ sceneId, entities: result.data as EntitySummary[] });
     }
     case 'scene_entity_info': {
       const { sceneId, entityId } = parse(EntityQuerySchema, raw);
-      return textResponse({ sceneId, entityId, tag: null, active: true, components: [] });
+      const numericId = toNumericEntityId(entityId);
+      if (numericId === null) {
+        return textResponse({
+          sceneId,
+          entityId,
+          error: { code: 'not-found', message: `"${entityId}" is not a live numeric entity id.` },
+        });
+      }
+      const result = await queryLiveGame({ kind: 'entityInfo', entityId: numericId });
+      if (!result.ok) return textResponse({ sceneId, entityId, error: result.error });
+      const summary = result.data as EntitySummary;
+      const { entityId: _ignored, ...rest } = summary; return textResponse({ sceneId, entityId, ...rest });
     }
     case 'scene_get_component': {
       const { sceneId, entityId, componentType } = parse(ComponentQuerySchema, raw);
-      return textResponse({ sceneId, entityId, componentType, data: null });
+      const numericId = toNumericEntityId(entityId);
+      if (numericId === null) {
+        return textResponse({
+          sceneId,
+          entityId,
+          componentType,
+          error: { code: 'not-found', message: `"${entityId}" is not a live numeric entity id.` },
+        });
+      }
+      const result = await queryLiveGame({ kind: 'getComponent', entityId: numericId, component: componentType });
+      if (!result.ok) return textResponse({ sceneId, entityId, componentType, error: result.error });
+      return textResponse({ sceneId, entityId, componentType, data: result.data });
     }
     case 'scene_create_entity': {
       const { sceneId, tag, components } = parse(CreateEntitySchema, raw);
-      const entityId = `entity-${Date.now()}`;
-      return textResponse({ sceneId, entityId, tag: tag ?? null, components: components ?? [] });
+      // QueryChannel (the engine-side bridge target) has no entity-creation
+      // query kind — it is deliberately read/patch only (listEntities,
+      // entityInfo, getComponent, setComponent, plus the physics queries).
+      // Creating a real live entity would need a new engine-side query kind
+      // this tool has nothing to call yet, so this stays an honest
+      // not-found rather than a fabricated success.
+      return textResponse({
+        sceneId,
+        tag: tag ?? null,
+        components: components ?? [],
+        error: {
+          code: 'not-found',
+          message: 'scene_create_entity has no live-bridge query kind to call — entity creation is not supported over the bridge.',
+        },
+      });
     }
     default:
       throw notFound(toolName);
