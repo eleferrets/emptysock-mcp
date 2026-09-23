@@ -84,8 +84,7 @@ This server hosts a plain WebSocket bridge on `127.0.0.1:EMPTYSOCK_BRIDGE_PORT` 
 
 What that means in practice, split by domain:
 
-- **Physics and Scene tools** (`physics_*`, `scene_*`) are live: they relay real queries to the connected live game's `QueryChannel` and return its real answer. With no live game connected, they return `{ ok: false, error: { code: "no-live-instance", ... } }` (or `"no-physics-world"` for a physics query against a scene with no initialized `PhysicsSystem`) — an honest error, never fabricated data. `scene_create_entity` is the one exception: `QueryChannel` has no entity-creation query kind (it's deliberately read/patch only), so it always returns `ok: false`/`not-found`.
-- **NavMesh and Actor tools** (`navmesh_*`, `actor_*`) still can't do real work even with the bridge connected: `QueryChannel` has no navmesh or `ActorSystem` query kind yet (only `listEntities`/`entityInfo`/`getComponent`/`setComponent` plus the three physics kinds). They check whether a live game is connected and report the honest reason either way — `no-live-instance` with nothing connected, `not-found` (naming the missing query kind) with a game connected — never a fabricated path or a fake "enqueued: true".
+- **Physics, Scene, NavMesh, and Actor tools** (`physics_*`, `scene_*`, `navmesh_*`, `actor_*`) are all live: they relay real queries to the connected live game's `QueryChannel` and return its real answer. With no live game connected, they return `{ ok: false, error: { code: "no-live-instance", ... } }`. Beyond that, each domain has its own honest "attached but not that system" error: physics queries against a scene with no initialized `PhysicsSystem` get `"no-physics-world"`; `actor_*` against a scene with no `ActorSystem` attached gets `"no-actor-system"`; `navmesh_*` against a scene with no navmesh attached gets `"no-navmesh"`. None of these ever collapse into a fabricated empty result — a `navmesh_find_path` call that finds no route reports `path: null`, not an error, and is distinguishable from every one of the three "nothing to even ask" cases above.
 - **Save, GMS2 import, Story Graph export, and VisualScript validation** are all real, working tools that operate on static project files on disk (save JSON, `.yyp`/`.yy` files, `.storyGraph.json` files, a `VisualScriptGraph` payload you hand it directly). No live game required, because none of these ever needed one.
 - **Battle damage estimation** is a real, working, pure calculation — it reimplements `BattleSystem`'s default physical damage formula rather than driving a live `BattleSystem` instance, because that instance is a stateful turn machine meant to run inside a real game loop, not something this server has any business owning.
 - **`emptysock_layer_info`** is reference documentation served as a tool response, not a stub — there's nothing to fake here, it's just handing back API docs.
@@ -110,10 +109,10 @@ Status key: **live** — does real work (either standalone, or by relaying to a 
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `navmesh_find_path` | stub | `from: Vec2` (required), `to: Vec2` (required), `mapId: string` (required) | `{ mapId, from, to, error }` — `QueryChannel` has no navmesh query kind, so this always returns an error (`no-live-instance` or `not-found`), never a fabricated path. |
-| `navmesh_nearest_node` | stub | `mapId: string` (required), `point: Vec2` (required) | `{ mapId, point, error }` — same limitation, always an error. |
+| `navmesh_find_path` | live | `from: Vec2` (required), `to: Vec2` (required), `mapId: string` (required; echoed back, not sent to the bridge — the live game has exactly one attached navmesh) | `{ mapId, from, to, path }` — the real waypoint array from `@emptysock/tilemap`'s `NavMeshSystem` (`path: null` if genuinely no route exists); `{ ..., error }` (`no-live-instance` or `no-navmesh`) when there's nothing real to ask. |
+| `navmesh_nearest_node` | live | `mapId: string` (required), `point: Vec2` (required) | `{ mapId, point, node }` — the nearest walkable point (`node: null` if none found); `{ ..., error }` on `no-live-instance`/`no-navmesh`. |
 
-`@emptysock/tilemap`'s `NavMeshSystem` is where a real path or nearest-node query would eventually come from — but `QueryChannel` (the bridge target) has no navmesh query kind to relay through yet, even with a live game connected. Treat these two as schema demonstrations rather than usable pathfinding until the engine side grows one.
+Relays to `QueryChannel`'s `navmeshFindPath`/`navmeshNearestNode` query kinds, which reach an optional `NavMeshQuerySource` (`@emptysock/tilemap`'s `NavMeshSystem`, wired in only if the live game's scene actually attached one) — a scene with no navmesh loaded is normal, not an error, and reports `"no-navmesh"` rather than `"not-found"`.
 
 **Example call — find path:**
 ```json
@@ -146,7 +145,7 @@ There's no `physics_raycast_3d` tool in this registry. 3D raycasting isn't offer
 | `scene_list_entities` | live | `sceneId: string` (required) | `{ sceneId, entities }` — every live entity's `EntitySummary` (components, and `Meta`/`Transform` fields when present); `{ sceneId, error }` when no live game is connected. |
 | `scene_entity_info` | live | `sceneId: string`, `entityId: string` (numeric string, both required) | `{ sceneId, entityId, components, name?, tags?, active?, x?, y?, rotation? }`; `{ sceneId, entityId, error }` when not found, no live game, or `entityId` isn't numeric. |
 | `scene_get_component` | live | `sceneId: string`, `entityId: string` (numeric string), `componentType: string` (PascalCase class name, all required) | `{ sceneId, entityId, componentType, data }` — the component's real live field values; `{ ..., error }` on failure. |
-| `scene_create_entity` | stub | `sceneId: string` (required); `tag: string`, `components: string[]` (optional) | `{ sceneId, tag, components, error }` — `QueryChannel` has no entity-creation query kind (deliberately read/patch only), so this always returns an error and never creates anything. |
+| `scene_create_entity` | live | `sceneId: string` (required; echoed back, not sent to the bridge — the live game has one current scene); `tag: string`, `components: string[]` (optional) | `{ sceneId, entityId, tag, components, skipped }` — the real spawned entity id, the components actually added, and any requested component names that weren't a registered `ComponentDef` (`skipped`, never a hard failure); `{ sceneId, tag, components, error }` when no live game is connected. |
 
 **Example call — get component:**
 ```json
@@ -181,12 +180,12 @@ Slot names are alphanumeric plus dashes/underscores only (`slot1`, `autosave`, `
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `actor_send_message` | stub | `actorId: string`, `message: { type: string, payload?: unknown }` (both required) | `{ actorId, message, error }` — `QueryChannel` has no `ActorSystem` query kind, so this always returns an error, never a fake `enqueued: true`. |
-| `actor_broadcast` | stub | `message: { type: string, payload?: unknown }` (required) | `{ message, error }` — same limitation. |
-| `actor_inbox_size` | stub | `actorId: string` (required) | `{ actorId, error }` — same limitation. |
-| `actor_list` | stub | none | `{ error }` — same limitation. |
+| `actor_send_message` | live | `actorId: string`, `message: { type: string, payload?: unknown }` (both required) | `{ actorId, queued: true }` on success; `{ actorId, message, error }` — `no-live-instance`, `no-actor-system`, or `not-found` for an unknown `actorId`. |
+| `actor_broadcast` | live | `message: { type: string, payload?: unknown }` (required) | `{ delivered }` — the real count of actors the message was enqueued for; `{ message, error }` on `no-live-instance`/`no-actor-system`. |
+| `actor_inbox_size` | live | `actorId: string` (required) | `{ actorId, inboxSize }` — the actor's real currently-queued (not yet flushed) message count; `{ actorId, error }` on `no-live-instance`, `no-actor-system`, or `not-found`. |
+| `actor_list` | live | none | `{ actors }` — every registered actor id, in registration order; `{ error }` on `no-live-instance`/`no-actor-system`. |
 
-The live bridge itself is wired up (see "What this server actually talks to" above) — what's still missing is an `ActorSystem` query kind on the engine's `QueryChannel` for these four tools to call through it. Once that lands, the same ordering guarantee `ActorSystem` uses everywhere else applies: it drains every actor's inbox before calling `update()` on any actor, so a message sent during frame N is fully processed before frame N's `update()` logic runs.
+Relays to `QueryChannel`'s `actorSendMessage`/`actorBroadcast`/`actorInboxSize`/`actorList` query kinds, which reach the live game's real `ActorSystem` directly. A scene can legitimately be live with zero actors running, so a missing `ActorSystem` is its own error, `"no-actor-system"`, never `"no-live-instance"`. The same ordering guarantee `ActorSystem` uses everywhere else applies: it drains every actor's inbox before calling `update()` on any actor, so a message sent during frame N is fully processed before frame N's `update()` logic runs.
 
 **Example call — send message:**
 ```json

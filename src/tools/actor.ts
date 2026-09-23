@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
-import { bridge } from '../lib/bridge.js';
+import { queryLiveGame } from '../lib/bridge.js';
+import type { ActorSendResultData, ActorBroadcastResultData } from '../lib/bridgeTypes.js';
 
 const ActorRefSchema = z.object({
   actorId: SafeId,
@@ -27,7 +28,7 @@ export const actorToolDefs = [
   {
     name: 'actor_send_message',
     description:
-      'Enqueue a message in a specific actor\'s inbox. The engine\'s QueryChannel bridge (see this server\'s CLAUDE.md) has no ActorSystem query kind yet, so this always returns ok:false — no-live-instance when nothing is connected, not-found otherwise — never a fabricated "enqueued".',
+      'Enqueue a message in a specific actor\'s inbox on the connected live game\'s ActorSystem. Returns ok:false/no-live-instance if no game is connected, ok:false/no-actor-system if the live scene has no ActorSystem, or ok:false/not-found if the actorId is unknown.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -46,7 +47,8 @@ export const actorToolDefs = [
   },
   {
     name: 'actor_broadcast',
-    description: 'Broadcast a message to all registered actors in the current ActorSystem. Same limitation as actor_send_message — always returns ok:false.',
+    description:
+      'Broadcast a message to every actor registered in the connected live game\'s ActorSystem, returning how many received it. Returns ok:false/no-live-instance if no game is connected, ok:false/no-actor-system if the live scene has no ActorSystem.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -61,7 +63,8 @@ export const actorToolDefs = [
   },
   {
     name: 'actor_inbox_size',
-    description: 'Return the number of pending messages in an actor\'s inbox. Same limitation as actor_send_message — always returns ok:false.',
+    description:
+      'Return the number of pending (not yet flushed) messages in an actor\'s inbox. Returns ok:false/no-live-instance if no game is connected, ok:false/no-actor-system if the live scene has no ActorSystem, or ok:false/not-found if the actorId is unknown.',
     inputSchema: {
       type: 'object',
       properties: { actorId: { type: 'string' } },
@@ -70,7 +73,8 @@ export const actorToolDefs = [
   },
   {
     name: 'actor_list',
-    description: 'List all actor IDs currently registered in the ActorSystem. Same limitation as actor_send_message — always returns ok:false.',
+    description:
+      'List every actor id currently registered in the connected live game\'s ActorSystem, in registration order. Returns ok:false/no-live-instance if no game is connected, ok:false/no-actor-system if the live scene has no ActorSystem.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -79,43 +83,32 @@ export const actorToolDefs = [
   },
 ] as const;
 
-/**
- * `QueryChannel` has no `EngineQuery` kind for `ActorSystem` today — see the
- * identically-reasoned helper in navmesh.ts. Reports whether a live game is
- * connected at all, distinct from "connected but unsupported".
- */
-function noActorQueryKind(): { error: { code: string; message: string } } {
-  return bridge.isConnected
-    ? {
-        error: {
-          code: 'not-found',
-          message: 'The connected live engine\'s QueryChannel has no ActorSystem query kind yet — actor messaging cannot be relayed over the bridge.',
-        },
-      }
-    : {
-        error: {
-          code: 'no-live-instance',
-          message: 'No live engine connected — start the game in the IDE or launch a dev build.',
-        },
-      };
-}
-
 export async function actorHandler(toolName: string, raw: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   switch (toolName) {
     case 'actor_send_message': {
       const { actorId, message } = parse(SendMessageSchema, raw);
-      return textResponse({ actorId, message, ...noActorQueryKind() });
+      const result = await queryLiveGame({ kind: 'actorSendMessage', actorId, message });
+      if (!result.ok) return textResponse({ actorId, message, error: result.error });
+      const data = result.data as ActorSendResultData;
+      return textResponse({ actorId, queued: data.queued });
     }
     case 'actor_broadcast': {
       const { message } = parse(BroadcastSchema, raw);
-      return textResponse({ message, ...noActorQueryKind() });
+      const result = await queryLiveGame({ kind: 'actorBroadcast', message });
+      if (!result.ok) return textResponse({ message, error: result.error });
+      const data = result.data as ActorBroadcastResultData;
+      return textResponse({ delivered: data.delivered });
     }
     case 'actor_inbox_size': {
       const { actorId } = parse(ActorRefSchema, raw);
-      return textResponse({ actorId, ...noActorQueryKind() });
+      const result = await queryLiveGame({ kind: 'actorInboxSize', actorId });
+      if (!result.ok) return textResponse({ actorId, error: result.error });
+      return textResponse({ actorId, inboxSize: result.data as number });
     }
     case 'actor_list': {
-      return textResponse({ ...noActorQueryKind() });
+      const result = await queryLiveGame({ kind: 'actorList' });
+      if (!result.ok) return textResponse({ error: result.error });
+      return textResponse({ actors: result.data as string[] });
     }
     default:
       throw notFound(toolName);

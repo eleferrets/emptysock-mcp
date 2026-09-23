@@ -41,7 +41,7 @@ describe('dispatchTool', () => {
     await expect(dispatchTool('does_not_exist', {})).rejects.toThrow(McpError);
   });
 
-  // --- NavMesh (QueryChannel has no navmesh query kind yet — see navmesh.ts) ---
+  // --- NavMesh (relayed live over the bridge; see bridge.test.ts for the connected-client path) ---
 
   it('navmesh_find_path returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('navmesh_find_path', {
@@ -157,14 +157,14 @@ describe('dispatchTool', () => {
     expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  it('scene_create_entity has no live-bridge query kind and returns ok:false/not-found', async () => {
+  it('scene_create_entity returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('scene_create_entity', { sceneId: 'level1', tag: 'enemy' });
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { sceneId: string; error: { code: string } };
     expect(parsed.sceneId).toBe('level1');
-    expect(parsed.error.code).toBe('not-found');
+    expect(parsed.error.code).toBe('no-live-instance');
   });
 
-  // --- Actor (QueryChannel has no ActorSystem query kind yet — see actor.ts) ---
+  // --- Actor (relayed live over the bridge; see bridge.test.ts for the connected-client path) ---
 
   it('actor_broadcast returns ok:false/no-live-instance with no bridge connection', async () => {
     const res = await dispatchTool('actor_broadcast', { message: { type: 'GAME_START' } });

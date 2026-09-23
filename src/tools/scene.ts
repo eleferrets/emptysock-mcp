@@ -3,7 +3,7 @@ import { parse, SafeId } from '../lib/validate.js';
 import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
 import { queryLiveGame } from '../lib/bridge.js';
-import type { EntitySummary } from '../lib/bridgeTypes.js';
+import type { EntitySummary, CreateEntityData } from '../lib/bridgeTypes.js';
 
 const SceneIdSchema = z.object({ sceneId: SafeId });
 
@@ -28,7 +28,7 @@ export const sceneToolDefs = [
   {
     name: 'scene_create_entity',
     description:
-      'Add a new entity to a scene. Not supported over the live bridge (QueryChannel is read/patch only, with no entity-creation query kind) — always returns ok:false/not-found.',
+      'Spawn a new entity in the connected live game and add each named, already-registered component (defaults only, no per-field overrides). If tag is given, it is written to Meta.name/Meta.tags. Returns ok:false/no-live-instance if no game is connected; unresolvable component names are reported back in skipped rather than failing the whole call.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -122,20 +122,19 @@ export async function sceneHandler(toolName: string, raw: unknown): Promise<{ co
     }
     case 'scene_create_entity': {
       const { sceneId, tag, components } = parse(CreateEntitySchema, raw);
-      // QueryChannel (the engine-side bridge target) has no entity-creation
-      // query kind — it is deliberately read/patch only (listEntities,
-      // entityInfo, getComponent, setComponent, plus the physics queries).
-      // Creating a real live entity would need a new engine-side query kind
-      // this tool has nothing to call yet, so this stays an honest
-      // not-found rather than a fabricated success.
+      const result = await queryLiveGame({
+        kind: 'createEntity',
+        ...(tag !== undefined ? { tag } : {}),
+        ...(components !== undefined ? { components } : {}),
+      });
+      if (!result.ok) return textResponse({ sceneId, tag: tag ?? null, components: components ?? [], error: result.error });
+      const data = result.data as CreateEntityData;
       return textResponse({
         sceneId,
-        tag: tag ?? null,
-        components: components ?? [],
-        error: {
-          code: 'not-found',
-          message: 'scene_create_entity has no live-bridge query kind to call — entity creation is not supported over the bridge.',
-        },
+        entityId: data.entityId,
+        tag: data.tag ?? null,
+        components: data.components,
+        skipped: data.skipped,
       });
     }
     default:
