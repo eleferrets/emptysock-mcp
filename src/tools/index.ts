@@ -4,7 +4,7 @@ import { physicsToolDefs, physicsHandler } from './physics.js';
 import { sceneToolDefs, sceneHandler } from './scene.js';
 import { saveToolDefs, saveHandler } from './save.js';
 import { actorToolDefs, actorHandler } from './actor.js';
-import { gms2ToolDefs, gms2Handler } from './gms2.js';
+import { layerToolDefs, layerHandler } from './layer.js';
 import { particleToolDefs, particleHandler } from './particle.js';
 import { vnToolDefs, vnHandler } from './vn.js';
 import { battleToolDefs, battleHandler } from './battle.js';
@@ -26,7 +26,7 @@ function buildRegistry(): Map<string, ToolHandler> {
   register(sceneToolDefs,   sceneHandler);
   register(saveToolDefs,    saveHandler);
   register(actorToolDefs,   actorHandler);
-  register(gms2ToolDefs,      gms2Handler);
+  register(layerToolDefs,      layerHandler);
   register(particleToolDefs,  particleHandler);
   register(vnToolDefs,        vnHandler);
   register(battleToolDefs,    battleHandler);
@@ -45,7 +45,7 @@ export function listTools(): Tool[] {
     ...sceneToolDefs,
     ...saveToolDefs,
     ...actorToolDefs,
-    ...gms2ToolDefs,
+    ...layerToolDefs,
     ...particleToolDefs,
     ...vnToolDefs,
     ...battleToolDefs,

@@ -6,17 +6,18 @@ import { notFound } from '../lib/errors.js';
 /**
  * Read-mostly inspection tool, matching the granularity of physics.ts and
  * battle.ts (pure/stateless checks rather than owning a live interpreter).
- * VisualScriptComponent's execution (update/fireEvent) is meant to run
- * inside a live entity with a real VariableStore/ActorSystem attached; this
- * server has no live engine connection to attach to. Instead, this tool
+ * Execution of a graph (@emptysock/engine's VisualScriptSystem, which
+ * compiles and runs `VisualScriptState` entities' graphs) is meant to run
+ * inside a live scene with a real VariableStore/ActorSystem attached; this
+ * server has no such attachment. Instead, this tool
  * performs the structural validation an agent needs before handing a graph
  * to a game: every node id is unique, every `next` / connection target
  * resolves to a node that exists in the graph, every node is reachable from
  * an entry node (onUpdate or onEvent), and branch nodes have a false-branch
  * warning surfaced when only a true branch is wired.
  *
- * Mirrors VSNode / VisualScriptGraph from
- * @emptysock/engine's VisualScriptComponent.ts.
+ * Mirrors VSNode / VisualScriptGraph from @emptysock/engine's public
+ * exports (VSNodeKind, VSNode, VSConnection, VisualScriptGraph).
  */
 const VSNodeKindSchema = z.enum([
   'onUpdate',
@@ -74,7 +75,7 @@ export const visualscriptToolDefs = [
   {
     name: 'visualscript_validate',
     description:
-      'Statically validate a VisualScriptGraph (the node graph VisualScriptComponent interprets): duplicate node ids, dangling next/connection targets, unreachable nodes, and branch nodes missing a false-branch. Read-only — does not run the graph against a live VariableStore or ActorSystem.',
+      'Statically validate a VisualScriptGraph (the node graph @emptysock/engine\'s VisualScriptSystem compiles and runs): duplicate node ids, dangling next/connection targets, unreachable nodes, and branch nodes missing a false-branch. Read-only — does not run the graph against a live VariableStore or ActorSystem.',
     inputSchema: {
       type: 'object',
       properties: {

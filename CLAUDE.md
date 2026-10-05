@@ -1,5 +1,9 @@
 # emptysock-mcp — Claude Code Instructions
 
+> **Deprecated / archived.** EmptySock development has stopped. Keep changes minimal and only to correct inaccuracies.
+
+Before editing any file, read it first. Before modifying a function, grep for all callers. Research before you edit.
+
 An MCP server that exposes EmptySock engine systems as tools for Claude Desktop, AI agents, and the Claude API. Some tools do real work against static project files today; a few are deliberate stubs waiting on a live connection to a running game (see the bridge note below). Both kinds are documented honestly in the README's tool table — keep it that way when you touch a handler.
 
 ---
@@ -22,15 +26,18 @@ src/
     index.ts         Registry — maps tool name → handler; dispatchTool(); listTools()
     actor.ts         actor_send_message, actor_broadcast, actor_inbox_size, actor_list
     battle.ts        battle_estimate_damage
-    gms2.ts          gms2_inspect_project, emptysock_layer_info
+    layer.ts         emptysock_layer_info
     navmesh.ts       navmesh_find_path, navmesh_nearest_node
     particle.ts      particle_emitter_config
     physics.ts       physics_raycast_2d, physics_overlap_circle, physics_body_state
-    save.ts          save_read, save_write, save_delete, save_list (GameSaveSlot shape)
+    save.ts          save_read, save_write, save_delete, save_list (this server's own slot-file envelope)
     scene.ts         scene_list_entities, scene_entity_info, scene_get_component, scene_create_entity
     vn.ts            story_graph_export
     visualscript.ts  visualscript_validate
+  tests/             Vitest suites (src/tests/*.test.ts)
 ```
+
+22 tools in total: 20 live, 1 docs (`emptysock_layer_info`), 1 stub (`particle_emitter_config`).
 
 ---
 
@@ -74,7 +81,7 @@ Wire envelope (JSON text frames): server→client is `{ id, query: EngineQuery }
 - Handlers doing I/O should `try/catch` and return `textResponse({ error: ... })` for the recoverable stuff (file not found, bad JSON) rather than throwing. Save that for genuinely exceptional failures.
 
 ### Security
-- All file I/O is restricted to `env.saveBaseDir` (or `env.assetBaseDir` for the asset-reading tools). `gms2_inspect_project` inherits the same restriction.
+- All file I/O is restricted to `env.saveBaseDir` (or `env.assetBaseDir` for the asset-reading tools).
 - The rate limiter (`defaultLimiter`) sits in front of every tool call by name, before dispatch, in `server.ts`.
 - Audit entries go to **stderr only**. stdout is the live MCP wire protocol — anything else written there corrupts every message that follows it.
 
@@ -90,7 +97,10 @@ Wire envelope (JSON text frames): server→client is `{ id, query: EngineQuery }
 ```bash
 npm test        # vitest run
 npm run lint    # tsc --noEmit
+npm run build   # tsc -> dist/
 ```
+
+Environment variables are read from the process environment only; nothing loads `.env`. Use `node --env-file=.env dist/server.js` (Node 20.6+) or your MCP host's `env` block.
 
 ---
 

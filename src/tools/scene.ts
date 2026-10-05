@@ -55,7 +55,7 @@ export const sceneToolDefs = [
       type: 'object',
       properties: {
         sceneId:  { type: 'string' },
-        entityId: { type: 'string' },
+        entityId: { type: 'string', description: 'Numeric entity id as a string, as returned by scene_list_entities (for example "1")' },
       },
       required: ['sceneId', 'entityId'],
     },
@@ -67,7 +67,7 @@ export const sceneToolDefs = [
       type: 'object',
       properties: {
         sceneId:       { type: 'string' },
-        entityId:      { type: 'string' },
+        entityId:      { type: 'string', description: 'Numeric entity id as a string, as returned by scene_list_entities (for example "1")' },
         componentType: { type: 'string', description: 'PascalCase class name, e.g. Transform, PhysicsBody' },
       },
       required: ['sceneId', 'entityId', 'componentType'],
