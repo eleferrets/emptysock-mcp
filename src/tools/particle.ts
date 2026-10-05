@@ -4,7 +4,7 @@ import { textResponse } from '../lib/response.js';
 import { notFound } from '../lib/errors.js';
 
 /**
- * Mirrors ParticleEmitterOptions from @emptysock/engine's ParticleSystem.ts.
+ * Mirrors ParticleEmitterOptions from @emptysock/engine (exported type).
  * Kept in sync by hand since there is no shared runtime import between this
  * server and the engine package.
  */
@@ -32,6 +32,10 @@ const EmitterOptionsSchema = z.object({
   shapeHeight: z.number().nonnegative().optional(),
   rotationSpeed: z.number().optional(),
   maxParticles: z.number().int().positive().optional(),
+  sizeWiggle: z.number().nonnegative().optional(),
+  speedWiggle: z.number().nonnegative().optional(),
+  dirWiggle: z.number().nonnegative().optional(),
+  blendMode: z.enum(['normal', 'add']).optional(),
 });
 
 const DEFAULT_CONFIG: z.infer<typeof EmitterOptionsSchema> = {
@@ -54,7 +58,7 @@ export const particleToolDefs = [
   {
     name: 'particle_emitter_config',
     description:
-      'Get or set a ParticleSystem emitter configuration (ParticleEmitterOptions) by emitter ID. Omit `config` to read; provide `config` to write.',
+      'Stub: get or set a ParticleEmitterOptions configuration by emitter ID. Omit `config` to read; provide `config` to write. Reads return a fixed placeholder default (not the engine defaults) and writes are echoed back merged over it; nothing is persisted and no live ParticleEmitter is touched.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -89,8 +93,12 @@ export const particleToolDefs = [
             shapeRadius: { type: 'number', minimum: 0 },
             shapeWidth: { type: 'number', minimum: 0 },
             shapeHeight: { type: 'number', minimum: 0 },
-            rotationSpeed: { type: 'number' },
+            rotationSpeed: { type: 'number', description: 'Radians per second.' },
             maxParticles: { type: 'number', minimum: 1 },
+            sizeWiggle: { type: 'number', minimum: 0 },
+            speedWiggle: { type: 'number', minimum: 0 },
+            dirWiggle: { type: 'number', minimum: 0, description: 'Degrees.' },
+            blendMode: { type: 'string', enum: ['normal', 'add'] },
           },
         },
       },

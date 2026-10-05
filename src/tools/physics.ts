@@ -58,7 +58,7 @@ export const physicsToolDefs = [
     inputSchema: {
       type: 'object',
       properties: {
-        entityId: { type: 'string' },
+        entityId: { type: 'string', description: 'Numeric entity id as a string, as returned by scene_list_entities (for example "1")' },
       },
       required: ['entityId'],
     },

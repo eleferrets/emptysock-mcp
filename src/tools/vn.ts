@@ -12,10 +12,10 @@ const StoryGraphExportSchema = z.object({
 });
 
 /**
- * Mirrors VariableCondition from @emptysock/engine's VariableStore (the
- * store @emptysock/vn's VNSystem defaults to — see that repo's CLAUDE.md,
- * "VNSystem defaults to the engine's global variableStore singleton").
- * Gates `condition` nodes and, via `optionWhens`, individual choice options.
+ * Mirrors VariableCondition from @emptysock/engine's VariableStore, which
+ * @emptysock/vn's VNSystem evaluates against the VariableStore passed to its
+ * constructor. Gates `condition` nodes and, via `optionWhens`, individual
+ * choice options.
  */
 const VariableConditionSchema = z.union([
   z.object({ kind: z.literal('switch'), index: z.number().int(), equals: z.boolean() }),
@@ -73,7 +73,7 @@ const StoryGraphSchema = z.object({
 function graphPath(sceneId: string, graphId: string): string {
   const base = path.resolve(env.assetBaseDir);
   const resolved = path.resolve(base, sceneId, `${graphId}.storyGraph.json`);
-  if (!resolved.startsWith(base)) {
+  if (!resolved.startsWith(base + path.sep)) {
     invalidParams('path traversal detected');
   }
   return resolved;

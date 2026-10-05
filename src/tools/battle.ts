@@ -12,8 +12,8 @@ import { notFound } from '../lib/errors.js';
  * re-implementing a full round simulator (and risking drift from
  * BattleSystem's real turn order / status-effect resolution), this tool
  * exposes the one pure, stateless calculation an agent needs for balance
- * testing: BattleSystem's default physical damage formula, `DEFAULT_PHYSICAL`
- * in BattleSystem.ts —
+ * testing: BattleSystem's default physical damage formula
+ * (`DEFAULT_PHYSICAL` in @emptysock/battle's DamageResolution.ts) —
  * `max(1, floor((effectiveAttack - effectiveDefense / 2) * power * (isCrit ? critMultiplier : 1)))`.
  */
 const EstimateDamageSchema = z.object({

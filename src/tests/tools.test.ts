@@ -209,7 +209,7 @@ describe('dispatchTool', () => {
     expect(Array.isArray(parsed.slots)).toBe(true);
   });
 
-  it('save_write writes a GameSaveSlot to disk with default timestamp/playtime', async () => {
+  it('save_write writes a slot envelope to disk with default timestamp/playtime', async () => {
     const slot = 'vitest-write-test';
     const data = { score: 42, level: 3 };
     const filePath = path.join(env.saveBaseDir, `${slot}.json`);
@@ -240,7 +240,7 @@ describe('dispatchTool', () => {
     ).rejects.toThrow(McpError);
   });
 
-  it('save_read returns a GameSaveSlot for an existing file', async () => {
+  it('save_read returns the slot envelope for an existing file', async () => {
     const slot = 'vitest-read-test';
     const record = { id: slot, scene: 'town', data: { hp: 100, name: 'hero' }, timestamp: 1000, playtime: 5 };
     const filePath = path.join(env.saveBaseDir, `${slot}.json`);
@@ -252,7 +252,7 @@ describe('dispatchTool', () => {
     expect(parsed).toEqual(record);
   });
 
-  it('save_read returns an error for a slot that does not match GameSaveSlot', async () => {
+  it('save_read returns an error for a slot that does not match the slot schema', async () => {
     const slot = 'vitest-bad-shape-test';
     const filePath = path.join(env.saveBaseDir, `${slot}.json`);
     tempFiles.push(filePath);
@@ -289,73 +289,27 @@ describe('dispatchTool', () => {
     expect(parsed.deleted).toBe(true);
   });
 
-  // --- GMS2 ---
-
-  it('gms2_inspect_project rejects a path with traversal', async () => {
-    await expect(
-      dispatchTool('gms2_inspect_project', { yypPath: '../../etc/passwd.yyp' }),
-    ).rejects.toThrow(McpError);
-  });
-
-  it('gms2_inspect_project returns a project summary for a valid .yyp stub', async () => {
-    const yypContent = JSON.stringify({
-      name: 'MyTestProject',
-      resources: [
-        { id: { name: 'obj_player', path: 'objects/obj_player/obj_player.yy' } },
-        { id: { name: 'obj_enemy', path: 'objects/obj_enemy/obj_enemy.yy' } },
-        { id: { name: 'scr_init', path: 'scripts/scr_init/scr_init.yy' } },
-        { id: { name: 'rm_level1', path: 'rooms/rm_level1/rm_level1.yy' } },
-      ],
-    });
-    const yypRelPath = 'vitest-test.yyp';
-    const yypFilePath = path.join(env.assetBaseDir, yypRelPath);
-    tempFiles.push(yypFilePath);
-    await fsPromises.writeFile(yypFilePath, yypContent, 'utf8');
-
-    const res = await dispatchTool('gms2_inspect_project', { yypPath: yypRelPath });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
-      projectName: string;
-      totalResources: number;
-      objectNames: string[];
-      scriptNames: string[];
-    };
-    expect(parsed.projectName).toBe('MyTestProject');
-    expect(parsed.totalResources).toBe(4);
-    expect(parsed.objectNames).toEqual(['obj_enemy', 'obj_player']);
-    expect(parsed.scriptNames).toEqual(['scr_init']);
-  });
-
-  it('gms2_inspect_project tolerates real GameMaker trailing commas and reads the "%Name" key', async () => {
-    // Real .yyp files (unlike strict JSON) carry a trailing comma after the
-    // last property of every object/array, and store the project name
-    // under "%Name" rather than "name".
-    const yypContent =
-      '{"%Name":"Trailing Comma Project","resources":[' +
-      '{"id":{"name":"obj_player","path":"objects/obj_player/obj_player.yy",},},' +
-      '{"id":{"name":"scr_init","path":"scripts/scr_init/scr_init.yy",},},' +
-      '],}';
-    const yypRelPath = 'vitest-trailing-comma-test.yyp';
-    const yypFilePath = path.join(env.assetBaseDir, yypRelPath);
-    tempFiles.push(yypFilePath);
-    await fsPromises.writeFile(yypFilePath, yypContent, 'utf8');
-
-    const res = await dispatchTool('gms2_inspect_project', { yypPath: yypRelPath });
-    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as {
-      projectName: string;
-      totalResources: number;
-      objectNames: string[];
-      scriptNames: string[];
-    };
-    expect(parsed.projectName).toBe('Trailing Comma Project');
-    expect(parsed.totalResources).toBe(2);
-    expect(parsed.objectNames).toEqual(['obj_player']);
-    expect(parsed.scriptNames).toEqual(['scr_init']);
-  });
-
+  // --- Layer docs ---
   it('emptysock_layer_info returns an object with methods', async () => {
     const res = await dispatchTool('emptysock_layer_info', {});
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { methods: unknown };
     expect(parsed.methods).toBeDefined();
+  });
+
+  it('emptysock_layer_info documents only real LayerSystem methods', async () => {
+    const res = await dispatchTool('emptysock_layer_info', {});
+    const text = res.content[0]?.text ?? '';
+    const parsed = JSON.parse(text) as { methods: Record<string, string>; exampleCode: string };
+    const names = Object.keys(parsed.methods).join(' ');
+    expect(names).toContain('defineLayer');
+    expect(names).toContain('addEntity');
+    expect(names).toContain('setOffset');
+    // Methods that never existed on LayerSystem must not be advertised as API.
+    expect(names).not.toContain('addToLayer');
+    expect(names).not.toContain('setParallax');
+    // The example must use exported engine names, not the internal RenderSystem.
+    expect(parsed.exampleCode).toContain('RenderPipeline');
+    expect(parsed.exampleCode).not.toContain('new RenderSystem');
   });
 
   // --- Particles ---
@@ -364,6 +318,16 @@ describe('dispatchTool', () => {
     const res = await dispatchTool('particle_emitter_config', { emitterId: 'dust' });
     const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { config: { emissionRate: number } };
     expect(typeof parsed.config.emissionRate).toBe('number');
+  });
+
+  it('particle_emitter_config accepts blendMode, sizeWiggle, speedWiggle and dirWiggle', async () => {
+    const res = await dispatchTool('particle_emitter_config', {
+      emitterId: 'spark',
+      config: { blendMode: 'add', sizeWiggle: 0.1, speedWiggle: 5, dirWiggle: 10 },
+    });
+    const parsed = JSON.parse(res.content[0]?.text ?? '{}') as { updated: boolean; config: { blendMode: string } };
+    expect(parsed.updated).toBe(true);
+    expect(parsed.config.blendMode).toBe('add');
   });
 
   it('particle_emitter_config (set) returns updated: true', async () => {

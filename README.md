@@ -1,8 +1,11 @@
 # emptysock-mcp
 
-A Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. It hands Claude Desktop, AI agents, and the Claude API a set of tools for poking at an EmptySock project: reading save files, validating Story Graphs and VisualScript graphs, importing GameMaker Studio 2 projects, estimating battle damage, and (eventually, see below) querying a live running game's physics and scene state.
+> **Deprecated and archived.** EmptySock development has stopped. This server is kept as a working reference for how to expose a game engine to AI agents over MCP; it is no longer maintained, and issues and pull requests are not being reviewed.
 
-Some of these tools do real work against real files on disk today. A few are honest placeholders waiting on a live connection to an actual game process. The table below tells you which is which — no tool here pretends to be more finished than it is.
+
+A Model Context Protocol server for the [EmptySock](https://github.com/eleferrets/emptysock-engine) game engine. It hands Claude Desktop, AI agents, and the Claude API a set of tools for poking at an EmptySock project: reading save files, validating Story Graphs and VisualScript graphs, estimating battle damage, and querying a live running game's physics, scene, actor and navmesh state over a local WebSocket bridge.
+
+The server exposes **22 tools**: 20 are live (they do real work on files on disk, or relay to a connected live game), 1 is a documentation tool (`emptysock_layer_info`), and 1 is a stub (`particle_emitter_config`). The table below tells you which is which — no tool here pretends to be more finished than it is.
 
 ---
 
@@ -18,24 +21,28 @@ Some of these tools do real work against real files on disk today. A few are hon
 ```bash
 git clone https://github.com/eleferrets/emptysock-mcp.git
 cd emptysock-mcp
-npm install
-npm run build
+npm ci          # or `npm install`
+npm run build   # compiles to dist/ (dist/server.js is the entry point)
 ```
+
+Optional checks: `npm run lint` (type-check), `npm test` (Vitest, 80 tests).
 
 ---
 
 ## Configuration
 
-Copy the example env file and fill in whatever you need:
+Every variable is optional and read from the process environment (`src/env.ts`). The server does **not** load a `.env` file by itself, so copying `.env.example` to `.env` has no effect unless you pass it in. Either export the variables, set them in your MCP host's `env` block (see Claude Desktop below), or let Node load the file:
 
 ```bash
-cp .env.example .env
+cp .env.example .env     # then edit the paths
+node --env-file=.env dist/server.js        # Node 20.6+
+npx tsx --env-file=.env src/server.ts      # development, no build step
 ```
 
 | Variable | Required | What it does |
 |---|---|---|
 | `SAVE_BASE_DIR` | No | The one directory the save tools are allowed to touch. Everything `save_read`/`save_write`/`save_delete`/`save_list` does is sandboxed to this path. Defaults to the process's working directory, which is fine for poking around locally and not what you want in production. |
-| `ASSET_BASE_DIR` | No | The directory project asset files live under. `story_graph_export` and `gms2_inspect_project` both resolve their paths from here. Same story: defaults to cwd, set it explicitly once this is running somewhere real. |
+| `ASSET_BASE_DIR` | No | The directory project asset files live under. `story_graph_export` resolves their paths from here. Same story: defaults to cwd, set it explicitly once this is running somewhere real. |
 | `RATE_LIMIT_MAX` | No | How many calls a single tool can take in one rate-limit window before it starts saying no. Default `60`. This exists mostly so an agent stuck in a retry loop doesn't hammer the process forever. |
 | `RATE_LIMIT_WINDOW_MS` | No | The length of that window, in milliseconds. Default `60000` (one minute). |
 | `EMPTYSOCK_BRIDGE_PORT` | No | Port the live-bridge WebSocket server binds to on `127.0.0.1`. A live game or the IDE preview dials in as the client so physics_*/scene_*/navmesh_*/actor_* tools can relay real queries to it. Default `7777`. |
@@ -54,7 +61,9 @@ npm run dev          # development — tsx, no build step
 node dist/server.js
 ```
 
-The server talks over stdin/stdout. There's no network port and no auth layer to configure, because there's nothing listening for anyone to break into.
+The MCP protocol itself runs over stdin/stdout, so there is no MCP network port and no MCP auth layer. The one network listener is the optional live bridge: a WebSocket server bound to `127.0.0.1:EMPTYSOCK_BRIDGE_PORT` (default `7777`) that a live game dials into (see below). If that port is already taken (for example by a second copy of this server), the bind error is written to the audit log on stderr and the server keeps running; the bridge-backed tools then report `no-live-instance`.
+
+To check that the server starts and lists its tools, send it an MCP handshake on stdin, for example `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}` followed by `{"jsonrpc":"2.0","method":"notifications/initialized"}` and `{"jsonrpc":"2.0","id":2,"method":"tools/list"}` (one JSON message per line). `tools/list` returns the 22 tools described below.
 
 ### Claude Desktop
 
@@ -85,7 +94,7 @@ This server hosts a plain WebSocket bridge on `127.0.0.1:EMPTYSOCK_BRIDGE_PORT` 
 What that means in practice, split by domain:
 
 - **Physics, Scene, NavMesh, and Actor tools** (`physics_*`, `scene_*`, `navmesh_*`, `actor_*`) are all live: they relay real queries to the connected live game's `QueryChannel` and return its real answer. With no live game connected, they return `{ ok: false, error: { code: "no-live-instance", ... } }`. Beyond that, each domain has its own honest "attached but not that system" error: physics queries against a scene with no initialized `PhysicsSystem` get `"no-physics-world"`; `actor_*` against a scene with no `ActorSystem` attached gets `"no-actor-system"`; `navmesh_*` against a scene with no navmesh attached gets `"no-navmesh"`. None of these ever collapse into a fabricated empty result — a `navmesh_find_path` call that finds no route reports `path: null`, not an error, and is distinguishable from every one of the three "nothing to even ask" cases above.
-- **Save, GMS2 import, Story Graph export, and VisualScript validation** are all real, working tools that operate on static project files on disk (save JSON, `.yyp`/`.yy` files, `.storyGraph.json` files, a `VisualScriptGraph` payload you hand it directly). No live game required, because none of these ever needed one.
+- **Save, Story Graph export, and VisualScript validation** are all real, working tools that operate on static project files on disk (save JSON, `.storyGraph.json` files, a `VisualScriptGraph` payload you hand it directly). No live game required, because none of these ever needed one.
 - **Battle damage estimation** is a real, working, pure calculation — it reimplements `BattleSystem`'s default physical damage formula rather than driving a live `BattleSystem` instance, because that instance is a stateful turn machine meant to run inside a real game loop, not something this server has any business owning.
 - **`emptysock_layer_info`** is reference documentation served as a tool response, not a stub — there's nothing to fake here, it's just handing back API docs.
 
@@ -144,12 +153,12 @@ There's no `physics_raycast_3d` tool in this registry. 3D raycasting isn't offer
 |---|---|---|---|
 | `scene_list_entities` | live | `sceneId: string` (required) | `{ sceneId, entities }` — every live entity's `EntitySummary` (components, and `Meta`/`Transform` fields when present); `{ sceneId, error }` when no live game is connected. |
 | `scene_entity_info` | live | `sceneId: string`, `entityId: string` (numeric string, both required) | `{ sceneId, entityId, components, name?, tags?, active?, x?, y?, rotation? }`; `{ sceneId, entityId, error }` when not found, no live game, or `entityId` isn't numeric. |
-| `scene_get_component` | live | `sceneId: string`, `entityId: string` (numeric string), `componentType: string` (PascalCase class name, all required) | `{ sceneId, entityId, componentType, data }` — the component's real live field values; `{ ..., error }` on failure. |
+| `scene_get_component` | live | `sceneId: string`, `entityId: string` (numeric string, e.g. `"1"`, from `scene_list_entities`), `componentType: string` (PascalCase component name such as `Transform`, all required) | `{ sceneId, entityId, componentType, data }` — the component's real live field values; `{ ..., error }` on failure. |
 | `scene_create_entity` | live | `sceneId: string` (required; echoed back, not sent to the bridge — the live game has one current scene); `tag: string`, `components: string[]` (optional) | `{ sceneId, entityId, tag, components, skipped }` — the real spawned entity id, the components actually added, and any requested component names that weren't a registered `ComponentDef` (`skipped`, never a hard failure); `{ sceneId, tag, components, error }` when no live game is connected. |
 
 **Example call — get component:**
 ```json
-{ "sceneId": "gameplay", "entityId": "player-001", "componentType": "Transform" }
+{ "sceneId": "gameplay", "entityId": "1", "componentType": "Transform" }
 ```
 
 ---
@@ -158,11 +167,11 @@ There's no `physics_raycast_3d` tool in this registry. 3D raycasting isn't offer
 
 All save tools are sandboxed to `SAVE_BASE_DIR`. Path traversal (`..`, absolute paths) is rejected both at the schema layer and again when the path is resolved.
 
-Slots are read and written using the engine's default `GameSaveSlot` shape (`{ id, scene, data, timestamp, playtime }`, from `SaveSystem` in `@emptysock/engine`). `SaveSystem` itself is generic over any Zod schema you construct it with, but these tools only speak the default shape — there's no way to carry an arbitrary Zod schema over MCP's JSON-RPC wire, so a game using a custom `SaveSystem<TSlot>` shape should treat these as opaque JSON storage rather than relying on the auto-filled `id`/`timestamp`/`playtime` convenience.
+Each slot is one `{slot}.json` file holding this server's own envelope: `{ id, scene, data, timestamp, playtime }`. This is **not** the format the engine's current `SaveSystem` writes (that one is component-based and asynchronous: a `StorageAdapter`-backed blob with a `formatVersion`, per-component versions and entity data, bound to a live `Scene`). Treat these tools as sandboxed JSON file storage with a fixed envelope; a game that wants them to read its saves has to write the same envelope itself.
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `save_read` | live | `slot: string` (alphanumeric + `-`/`_`, required) | The `GameSaveSlot` read from disk, or `{ error }` if the slot is missing or doesn't match the shape. |
+| `save_read` | live | `slot: string` (alphanumeric + `-`/`_`, required) | The slot envelope read from disk, or `{ error }` if the slot is missing or doesn't match the shape. |
 | `save_write` | live | `slot: string`, `scene: string`, `data: object` (required); `timestamp: number`, `playtime: number` (optional, default to `Date.now()` and `0`) | `{ slot, written: true }`, or `{ error }` on failure. |
 | `save_delete` | live | `slot: string` (required) | `{ slot, deleted: true }` (deleting a slot that doesn't exist still reports success). |
 | `save_list` | live | `subdir: string` (optional, no traversal) | `{ slots, dir }` — every `.json` file in the directory, extension stripped. |
@@ -194,14 +203,11 @@ Relays to `QueryChannel`'s `actorSendMessage`/`actorBroadcast`/`actorInboxSize`/
 
 ---
 
-### GMS2
+### Layers
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `gms2_inspect_project` | live | `yypPath: string` (relative path to a `.yyp` file, required) | `{ projectName, yypPath, totalResources, assetCounts, objectNames, scriptNames }`, or `{ error }` if the file is missing, outside `ASSET_BASE_DIR`, or not valid JSON even after trailing-comma cleanup. |
-| `emptysock_layer_info` | docs | none | A reference document for the `LayerSystem` API — methods, usage notes, and an example. Not project-specific; same response every time. |
-
-`gms2_inspect_project` actually parses a real GameMaker Studio 2 project: it tolerates the trailing commas GameMaker's IDE always writes (not strict JSON) and reads the project's display name from the real `"%Name"` key rather than a `"name"` field that doesn't exist there.
+| `emptysock_layer_info` | docs | none | A reference document for the `LayerSystem` API from `@emptysock/engine` (`defineLayer`, `addEntity`, `removeEntity`, `setDepth`, `setVisible`, `setOffset`, `getLayersSorted`, and how `RenderPipeline` shares a `LayerSystem`) with an example that uses real exports. Not project-specific; same response every time. |
 
 ---
 
@@ -209,7 +215,7 @@ Relays to `QueryChannel`'s `actorSendMessage`/`actorBroadcast`/`actorInboxSize`/
 
 | Tool | Status | Parameters | Returns |
 |---|---|---|---|
-| `particle_emitter_config` | stub | `emitterId: string` (required); `config: ParticleEmitterOptions` (optional — omit to read, provide to write) | Reading returns a fixed default config merged with nothing real; writing returns `{ emitterId, updated: true, config }` where `config` is your input merged over those same defaults. Nothing is persisted and no live `ParticleSystem` emitter is actually touched. |
+| `particle_emitter_config` | stub | `emitterId: string` (required); `config: ParticleEmitterOptions` (optional — omit to read, provide to write) | Reading returns a fixed default config merged with nothing real; writing returns `{ emitterId, updated: true, config }` where `config` is your input merged over those same defaults. Nothing is persisted and no live `ParticleEmitter` is actually touched. |
 
 **Example call — read config:**
 ```json
@@ -268,7 +274,7 @@ This genuinely reimplements `@emptysock/battle`'s `BattleSystem` default physica
 |---|---|---|---|
 | `visualscript_validate` | live | `graph: { nodes: VSNode[], connections: VSConnection[] }` (required) | `{ valid, nodeCount, connectionCount, entryNodeIds, unreachableNodeIds, issues }` — `issues` is a list of `{ severity: "error" \| "warning", nodeId?, message }`. |
 
-This runs a real, complete structural check against a `VisualScriptGraph` (the node graph `VisualScriptComponent` interprets): duplicate node ids, dangling `next`/connection targets, nodes unreachable from an `onUpdate`/`onEvent` entry node, and `branch` nodes missing a false branch. It does not execute the graph against a live `VariableStore` or `ActorSystem` — that's a different, much bigger job — but everything it does check, it checks for real.
+This runs a real, complete structural check against a `VisualScriptGraph` (the node graph `@emptysock/engine`'s `VisualScriptSystem` compiles and runs): duplicate node ids, dangling `next`/connection targets, nodes unreachable from an `onUpdate`/`onEvent` entry node, and `branch` nodes missing a false branch. It does not execute the graph against a live `VariableStore` or `ActorSystem` — that's a different, much bigger job — but everything it does check, it checks for real.
 
 **Example call:**
 ```json
@@ -295,6 +301,7 @@ This runs a real, complete structural check against a `VisualScriptGraph` (the n
 npm run lint        # TypeScript type-check (no emit)
 npm test            # run Vitest suite
 npm run test:watch  # watch mode
+npm run build       # tsc -> dist/
 ```
 
 Tests live in `src/tests/`. They cover input validation, tool dispatch, and the security invariants that actually matter here (path traversal, unknown tool names, and confirming the stubs stay honest stubs).
@@ -305,9 +312,8 @@ Tests live in `src/tests/`. They cover input validation, tool dispatch, and the 
 
 1. Create `src/tools/<domain>.ts` — export a `toolDef` array entry and a `handler` function.
 2. Register both in `src/tools/index.ts` via the `register()` call in `buildRegistry()`.
-3. Add an entry to `api-reference.json` in `emptysock-engine`.
-4. Add a skill file to `eleferrets/emptysock-ai-skills`.
-5. Update this README's tools table. If it's a stub, say so plainly — don't let it look more finished than it is.
+3. (Optional, both companion repos are archived) Mirror the tool in the `emptysock-ai-skills` pack.
+4. Update this README's tools table and the tool count in the intro. If it's a stub, say so plainly — don't let it look more finished than it is.
 
 Shared helpers live in `src/lib/`:
 
@@ -315,6 +321,7 @@ Shared helpers live in `src/lib/`:
 - `SafeRelPath`, `SafeId`, `Vec2`, `Vec3`, `GameNum` — reusable Zod schemas
 - `textResponse(data)` — builds the standard MCP text content response
 - `wrapError(err)` — logs to stderr and re-throws as `McpError(InternalError)`
+- `queryLiveGame(query)` (`lib/bridge.ts`) — relays an `EngineQuery` to the connected live game
 
 ---
 

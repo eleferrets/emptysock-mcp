@@ -2,12 +2,13 @@
   "name": "emptysock-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "MCP server for the EmptySock game engine",
+  "description": "MCP server for the EmptySock game engine (deprecated; archived)",
   "keywords": [
     "emptysock",
     "mcp",
     "game-engine",
-    "model-context-protocol"
+    "model-context-protocol",
+    "deprecated"
   ],
   "repository": {
     "type": "git",
